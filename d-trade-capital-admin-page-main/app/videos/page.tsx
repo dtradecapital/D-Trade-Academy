@@ -226,6 +226,9 @@ export default function VideosPage() {
     const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
     const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
     const [isCreatingQuiz, setIsCreatingQuiz] = useState(false)
+    const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({})
+    const [isQuizSubmitted, setIsQuizSubmitted] = useState(false)
+    const [quizScore, setQuizScore] = useState(0)
     const [toastMessage, setToastMessage] = useState<string | null>(null)
     const [showAddCourseForm, setShowAddCourseForm] = useState(false)
     const [courseList, setCourseList] = useState<Course[]>([])
@@ -380,6 +383,9 @@ export default function VideosPage() {
             setQuizQuestions([])
             setIsCreatingQuiz(false)
             setSelectedVideo(null)
+            setSelectedAnswers({})
+            setIsQuizSubmitted(false)
+            setQuizScore(0)
             return
         }
 
@@ -416,6 +422,9 @@ export default function VideosPage() {
         const savedQuiz = loadQuizFromStorage(selectedLesson.id)
         setQuizQuestions(savedQuiz)
         setIsCreatingQuiz(false)
+        setSelectedAnswers({})
+        setIsQuizSubmitted(false)
+        setQuizScore(0)
 
         setNoteText('')
         setNoteColor('#111827')
@@ -584,6 +593,9 @@ export default function VideosPage() {
         setQuizQuestions(questions)
         saveQuizToStorage(selectedLesson.id, questions)
         setIsCreatingQuiz(false)
+        setSelectedAnswers({})
+        setIsQuizSubmitted(false)
+        setQuizScore(0)
         showToast('Quiz saved successfully!')
     }
 
@@ -593,6 +605,25 @@ export default function VideosPage() {
 
     const handleCancelQuizCreation = () => {
         setIsCreatingQuiz(false)
+    }
+
+    const handleAnswerSelect = (questionId: string, optionIndex: number) => {
+        if (isQuizSubmitted) return;
+        setSelectedAnswers(prev => ({
+            ...prev,
+            [questionId]: optionIndex
+        }))
+    }
+
+    const handleSubmitQuiz = () => {
+        let score = 0;
+        quizQuestions.forEach(question => {
+            if (selectedAnswers[question.id] === question.correctAnswerIndex) {
+                score += 1;
+            }
+        });
+        setQuizScore(score);
+        setIsQuizSubmitted(true);
     }
 
     useEffect(() => {
@@ -1248,23 +1279,53 @@ export default function VideosPage() {
                                         />
                                     ) : quizQuestions.length > 0 ? (
                                         <div className="space-y-6">
+                                            {isQuizSubmitted && (
+                                                <div className="rounded-xl border border-primary/20 bg-primary/10 p-6 text-center">
+                                                    <h4 className="text-xl font-bold text-primary">Your Score: {quizScore} / {quizQuestions.length}</h4>
+                                                    <p className="mt-2 text-sm text-muted-foreground">
+                                                        {quizScore === quizQuestions.length ? 'Perfect score! Excellent job.' : 'Review your answers below.'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
                                             {quizQuestions.map((question, qIdx) => (
-                                                <div key={question.id} className="rounded-3xl border border-border bg-background p-6">
+                                                <div key={question.id} className={`rounded-3xl border ${isQuizSubmitted && selectedAnswers[question.id] === question.correctAnswerIndex ? 'border-green-500/50' : isQuizSubmitted && selectedAnswers[question.id] !== undefined ? 'border-red-500/50' : 'border-border'} bg-background p-6`}>
                                                     <p className="text-sm font-medium text-foreground">{qIdx + 1}. {question.question}</p>
                                                     <div className="mt-4 space-y-3">
-                                                        {question.options.map((option, optIdx) => (
-                                                            <label key={optIdx} className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm transition hover:bg-card/80">
-                                                                <input
-                                                                    type="radio"
-                                                                    name={`quiz-q${qIdx}`}
-                                                                    value={optIdx}
-                                                                    className="h-4 w-4 accent-primary"
-                                                                />
-                                                                <span className="text-foreground">{String.fromCharCode(65 + optIdx)}. {option}</span>
-                                                            </label>
-                                                        ))}
+                                                        {question.options.map((option, optIdx) => {
+                                                            const isSelected = selectedAnswers[question.id] === optIdx;
+                                                            const isCorrect = question.correctAnswerIndex === optIdx;
+                                                            let optionClass = "border-border bg-card hover:bg-card/80";
+                                                            
+                                                            if (isQuizSubmitted) {
+                                                                if (isCorrect) {
+                                                                    optionClass = "border-green-500 bg-green-500/10 text-green-700 dark:text-green-400";
+                                                                } else if (isSelected) {
+                                                                    optionClass = "border-red-500 bg-red-500/10 text-red-700 dark:text-red-400";
+                                                                } else {
+                                                                    optionClass = "border-border bg-card opacity-50";
+                                                                }
+                                                            } else if (isSelected) {
+                                                                optionClass = "border-primary bg-primary/5";
+                                                            }
+
+                                                            return (
+                                                                <label key={optIdx} className={`flex ${isQuizSubmitted ? 'cursor-default' : 'cursor-pointer'} items-center gap-3 rounded-xl border px-4 py-3 text-sm transition ${optionClass}`}>
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`quiz-q${qIdx}`}
+                                                                        value={optIdx}
+                                                                        checked={isSelected}
+                                                                        onChange={() => handleAnswerSelect(question.id, optIdx)}
+                                                                        disabled={isQuizSubmitted}
+                                                                        className="h-4 w-4 accent-primary"
+                                                                    />
+                                                                    <span className={isQuizSubmitted && (isCorrect || isSelected) ? "font-semibold" : "text-foreground"}>{String.fromCharCode(65 + optIdx)}. {option}</span>
+                                                                </label>
+                                                            )
+                                                        })}
                                                     </div>
-                                                    {question.explanation && (
+                                                    {isQuizSubmitted && question.explanation && (
                                                         <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
                                                             <p className="text-xs font-semibold text-blue-900 dark:text-blue-100">Explanation:</p>
                                                             <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">{question.explanation}</p>
@@ -1273,17 +1334,37 @@ export default function VideosPage() {
                                                 </div>
                                             ))}
                                             <div className="flex gap-2 justify-end pt-4 border-t">
-                                                <Button
-                                                    onClick={handleStartCreatingQuiz}
-                                                    variant="outline"
-                                                    className="gap-2"
-                                                >
-                                                    <Edit3 className="w-4 h-4" />
-                                                    Edit Quiz
-                                                </Button>
-                                                <Button className="gap-2">
-                                                    Submit Quiz
-                                                </Button>
+                                                {!isQuizSubmitted && (
+                                                    <Button
+                                                        onClick={handleStartCreatingQuiz}
+                                                        variant="outline"
+                                                        className="gap-2"
+                                                    >
+                                                        <Edit3 className="w-4 h-4" />
+                                                        Edit Quiz
+                                                    </Button>
+                                                )}
+                                                {!isQuizSubmitted ? (
+                                                    <Button 
+                                                        onClick={handleSubmitQuiz}
+                                                        disabled={Object.keys(selectedAnswers).length < quizQuestions.length}
+                                                        className="gap-2"
+                                                    >
+                                                        Submit Quiz
+                                                    </Button>
+                                                ) : (
+                                                    <Button 
+                                                        onClick={() => {
+                                                            setIsQuizSubmitted(false)
+                                                            setSelectedAnswers({})
+                                                            setQuizScore(0)
+                                                        }}
+                                                        variant="outline"
+                                                        className="gap-2"
+                                                    >
+                                                        Retake Quiz
+                                                    </Button>
+                                                )}
                                             </div>
                                         </div>
                                     ) : (

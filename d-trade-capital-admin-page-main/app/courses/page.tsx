@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, BookOpen, ChevronRight, CheckSquare } from 'lucide-react'
+import { Plus, BookOpen, ChevronRight, CheckSquare, Edit, Trash2, X, Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 type LessonForm = {
   id: string
@@ -58,6 +60,7 @@ export default function CoursesPage() {
   const [expandedUnitIds, setExpandedUnitIds] = useState<string[]>([])
   const [bulkLessonText, setBulkLessonText] = useState<Record<string, string>>({})
   const [showCourseForm, setShowCourseForm] = useState(true)
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -153,40 +156,103 @@ export default function CoursesPage() {
       return
     }
 
-    const course: SavedCourse = {
-      id: `course-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      title: title.trim(),
-      description: description.trim(),
-      durationWeeks: Math.max(1, durationWeeks),
-      tags: tagsText
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-      units: units.map((unit) => ({
-        ...unit,
-        lessons: unit.lessons.map((lesson) => ({
-          ...lesson,
-          title: lesson.title.trim(),
-          duration: lesson.duration.trim(),
-          videoUrl: lesson.videoUrl.trim(),
+    if (editingCourseId) {
+      // Update existing course
+      const updatedCourses = savedCourses.map((course) =>
+        course.id === editingCourseId
+          ? {
+            ...course,
+            title: title.trim(),
+            description: description.trim(),
+            durationWeeks: Math.max(1, durationWeeks),
+            tags: tagsText
+              .split(',')
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+            units: units.map((unit) => ({
+              ...unit,
+              lessons: unit.lessons.map((lesson) => ({
+                ...lesson,
+                title: lesson.title.trim(),
+                duration: lesson.duration.trim(),
+                videoUrl: lesson.videoUrl.trim(),
+              })),
+            })),
+          }
+          : course
+      )
+      setSavedCourses(updatedCourses)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedCourses))
+      handleCancelEdit()
+    } else {
+      // Create new course
+      const course: SavedCourse = {
+        id: `course-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: title.trim(),
+        description: description.trim(),
+        durationWeeks: Math.max(1, durationWeeks),
+        tags: tagsText
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        units: units.map((unit) => ({
+          ...unit,
+          lessons: unit.lessons.map((lesson) => ({
+            ...lesson,
+            title: lesson.title.trim(),
+            duration: lesson.duration.trim(),
+            videoUrl: lesson.videoUrl.trim(),
+          })),
         })),
-      })),
+      }
+
+      const nextCourses = [course, ...savedCourses]
+      setSavedCourses(nextCourses)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCourses))
+
+      setTitle('')
+      setDescription('')
+      setTagsText('')
+      setDurationWeeks(4)
+      setUnitCount(1)
+      setUnits([createUnit()])
     }
+  }
 
-    const nextCourses = [course, ...savedCourses]
-    setSavedCourses(nextCourses)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCourses))
+  const handleToggleCourse = (courseId: string) => {
+    setExpandedCourseId((current) => (current === courseId ? null : courseId))
+  }
 
+  const handleEdit = (course: SavedCourse) => {
+    // Pre-fill form with course data
+    setTitle(course.title)
+    setDescription(course.description)
+    setTagsText(course.tags.join(', '))
+    setDurationWeeks(course.durationWeeks)
+    setUnitCount(course.units.length)
+    setUnits(course.units)
+    setEditingCourseId(course.id)
+    setShowCourseForm(true)
+    setExpandedCourseId(null)
+    // Scroll to form
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingCourseId(null)
     setTitle('')
     setDescription('')
     setTagsText('')
     setDurationWeeks(4)
     setUnitCount(1)
     setUnits([createUnit()])
+    setBulkLessonText({})
   }
 
-  const handleToggleCourse = (courseId: string) => {
-    setExpandedCourseId((current) => (current === courseId ? null : courseId))
+  const handleDeleteCourse = (courseId: string) => {
+    const nextCourses = savedCourses.filter((course) => course.id !== courseId)
+    setSavedCourses(nextCourses)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCourses))
   }
 
   return (
@@ -211,7 +277,16 @@ export default function CoursesPage() {
           {showCourseForm && (
             <Card>
               <CardHeader>
-                <CardTitle>Course Form</CardTitle>
+                <CardTitle>
+                  {editingCourseId ? (
+                    <div className="flex items-center justify-between">
+                      <span>Edit Course</span>
+                      <span className="text-xs font-normal text-muted-foreground">Editing course</span>
+                    </div>
+                  ) : (
+                    'Create New Course'
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-3">
@@ -365,9 +440,16 @@ export default function CoursesPage() {
                 </div>
 
                 <div className="pt-4">
-                  <Button type="button" onClick={handleSaveCourse}>
-                    Save Course
-                  </Button>
+                  <div className="flex gap-3">
+                    <Button type="button" onClick={handleSaveCourse}>
+                      {editingCourseId ? 'Update Course' : 'Save Course'}
+                    </Button>
+                    {editingCourseId && (
+                      <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -408,7 +490,53 @@ export default function CoursesPage() {
                           >
                             View details
                           </button>
-                          <ChevronRight className={`size-5 text-muted-foreground transition ${expandedCourseId === course.id ? 'rotate-90' : ''}`} />
+                          <div className="flex items-center gap-2">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEdit(course)}
+                                  className="size-8 p-0"
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit</TooltipContent>
+                            </Tooltip>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="size-8 p-0 text-red-600 hover:text-red-700"
+                                  title="Delete course"
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Course</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete "{course.title}"? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteCourse(course.id)}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                            <ChevronRight className={`size-5 text-muted-foreground transition ${expandedCourseId === course.id ? 'rotate-90' : ''}`} />
+                          </div>
                         </div>
 
                         {expandedCourseId === course.id && (
