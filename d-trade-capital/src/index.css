@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", serif;
+  
+  --color-primary: #F5B942;
+  --color-secondary: #D4AF37;
+  --color-background: #0A0A0A;
+  --color-card: #121212;
+  --color-text: #E5E5E5;
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-muted: #737373;
+  --color-border: rgba(245, 185, 66, 0.2);
+  
+  --radius-card: 4px;
+}
+
+@layer base {
+  body {
+    background-color: #0A0A0A;
+    color: #E5E5E5;
+    font-family: inherit;
+    -webkit-font-smoothing: antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+
+  .label-caps {
+    @apply text-[10px] uppercase tracking-[0.2em] font-bold text-muted;
+  }
+
+  .gold-italic {
+    @apply text-primary italic;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-card rounded-card border border-border shadow-[0_4px_20px_rgba(0,0,0,0.5)] p-6 transition-all duration-300 hover:border-primary/40 hover:shadow-[0_0_15px_rgba(245,185,66,0.1)];
+  }
+  
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-none text-muted hover:text-primary hover:bg-white/5 transition-all cursor-pointer border-l-2 border-transparent;
+  }
+  
+  .sidebar-item.active {
+    @apply text-primary bg-primary/5 font-medium border-l-2 border-primary shadow-[inset_4px_0_10px_rgba(245,185,66,0.05)];
+  }
+
+  .btn-premium {
+    @apply px-6 py-2 bg-transparent border border-primary text-primary font-bold rounded-none hover:bg-primary hover:text-black transition-all duration-300 shadow-[0_0_10px_rgba(245,185,66,0.1)] active:scale-95 uppercase tracking-widest text-xs;
+  }
+
+  .input-premium {
+    @apply bg-black/40 border border-border rounded-none px-4 py-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all text-sm placeholder:text-muted/50;
+  }
+}
