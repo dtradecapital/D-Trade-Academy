@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Download, TrendingUp, TrendingDown, Users, BookOpen, DollarSign, BarChart3, PieChart as PieChartIcon, Calendar } from 'lucide-react'
+import { jsPDF } from 'jspdf'
+import html2canvas from 'html2canvas'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +23,8 @@ import {
   dashboardStats,
   courses,
   transactions,
-  users
+  users,
+  userEnrollments,
 } from '@/lib/mock-data'
 import {
   ResponsiveContainer,
@@ -44,8 +47,9 @@ import {
 const COLORS = ['oklch(0.7 0.18 160)', 'oklch(0.65 0.15 250)', 'oklch(0.75 0.18 45)', 'oklch(0.6 0.18 300)', 'oklch(0.7 0.2 30)']
 
 export default function ReportsPage() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [dateRange, setDateRange] = useState('year')
+  const [dateRange, setDateRange] = useState("month")
+
+  const reportRef = useRef(null)
 
   const stats = useMemo(() => {
     const totalRevenue = transactions.filter(t => t.status === 'Completed').reduce((sum, t) => sum + t.amount, 0)
@@ -63,9 +67,9 @@ export default function ReportsPage() {
 
   const categoryData = useMemo(() => {
     const categoryMap = new Map<string, number>()
-    courses.forEach((course) => {
-      const existing = categoryMap.get(course.category) || 0
-      categoryMap.set(course.category, existing + course.enrollments)
+    userEnrollments.forEach((enrollment) => {
+      const existing = categoryMap.get(enrollment.courseName) || 0
+      categoryMap.set(enrollment.courseName, existing + 1)
     })
     return Array.from(categoryMap.entries()).map(([name, value]) => ({ name, value }))
   }, [])
@@ -79,9 +83,29 @@ export default function ReportsPage() {
     return Array.from(methodMap.entries()).map(([name, value]) => ({ name, value }))
   }, [])
 
+  const handleExportPDF = async () => {
+  try {
+    const pdf = new jsPDF("p", "mm", "a4")
+
+    pdf.setFontSize(22)
+    pdf.text("DTrade Capital Report", 20, 20)
+
+    pdf.setFontSize(14)
+    pdf.text("Total Revenue: $2,791", 20, 40)
+    pdf.text("Total Users: 2,716", 20, 50)
+    pdf.text("Active Courses: 2", 20, 60)
+    pdf.text("Avg Revenue/User: $174.44", 20, 70)
+
+    pdf.save("dtrade-report.pdf")
+  } catch (error) {
+    console.error(error)
+    alert("PDF Export Failed")
+  }
+}
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <main className="flex-1 p-4 md:p-6 space-y-6">
+      <main id="reports-section" className="flex-1 p-4 md:p-6 space-y-6" ref={reportRef}>
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Reports & Analytics</h1>
@@ -100,7 +124,7 @@ export default function ReportsPage() {
                 <SelectItem value="year">Last Year</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline">
+            <Button variant="outline" onClick={handleExportPDF}>
               <Download className="mr-2 size-4" />
               Export Report
             </Button>

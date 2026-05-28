@@ -3,9 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { Bell, Search, Moon, Sun, X, UserCircle2, BarChart3, BookOpen, Users, FileText } from 'lucide-react'
+import { Bell, Moon, Sun, UserCircle2, BookOpen, Users, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -13,9 +12,17 @@ import { notifications } from '@/lib/mock-data'
 
 export function Navbar() {
   const pathname = usePathname()
-  const [searchQuery, setSearchQuery] = useState('')
   const [isDarkMode, setIsDarkMode] = useState(true)
   const unreadCount = notifications.filter((n) => !n.read).length
+  const latestNotifications = notifications.slice(0, 4)
+
+  const formatTimestamp = (timestamp: string) =>
+    new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(timestamp))
 
   const navItems = [
     { title: 'Dashboard', href: '/' },
@@ -61,27 +68,6 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 md:gap-3">
-          <div className="relative hidden md:block w-56">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-            {searchQuery && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 size-7 -translate-y-1/2"
-                onClick={() => setSearchQuery('')}
-              >
-                <X className="size-4" />
-              </Button>
-            )}
-          </div>
-
           <Button variant="ghost" size="icon" onClick={toggleTheme} className="size-9">
             {isDarkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>
@@ -97,13 +83,26 @@ export function Navbar() {
                 )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <DropdownMenuLabel className="flex items-center justify-between">
-                <span>Notifications</span>
+            <DropdownMenuContent align="end" className="w-80 bg-slate-950 text-slate-100 border border-slate-800 shadow-lg">
+              <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
+                <span className="text-sm font-semibold">Notifications</span>
                 {unreadCount > 0 && <Badge variant="secondary" className="text-xs">{unreadCount} new</Badge>}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-sm">Open notifications</DropdownMenuItem>
+              <div className="space-y-1 px-1 py-1">
+                {latestNotifications.map((notification) => (
+                  <DropdownMenuItem
+                    key={notification.id}
+                    className="cursor-pointer flex flex-col rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-left text-slate-100 transition hover:bg-slate-800 focus:bg-slate-800"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{notification.title}</span>
+                      <span className="text-[11px] text-muted-foreground">{formatTimestamp(notification.timestamp)}</span>
+                    </div>
+                    <p className="text-xs text-slate-400">{notification.description}</p>
+                  </DropdownMenuItem>
+                ))}
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -115,7 +114,7 @@ export function Navbar() {
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="w-56 bg-slate-950 text-slate-100 border border-slate-800 shadow-lg">
               <DropdownMenuLabel>
                 <div className="space-y-0.5">
                   <p className="text-sm font-semibold">Admin User</p>
@@ -123,10 +122,16 @@ export function Navbar() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem>Settings</DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/profile" className="w-full">Profile</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings" className="w-full">Settings</Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">Sign out</DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <button type="button" className="w-full text-left">Logout</button>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
