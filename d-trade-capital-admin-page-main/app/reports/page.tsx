@@ -16,17 +16,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  monthlyRevenue,
-  userGrowth,
-  coursePopularity,
-  instructorEarningsData,
-  dashboardStats,
-  courses,
-  transactions,
-  users,
-  userEnrollments,
-} from '@/lib/mock-data'
-import {
   ResponsiveContainer,
   AreaChart,
   Area,
@@ -46,62 +35,141 @@ import {
 
 const COLORS = ['oklch(0.7 0.18 160)', 'oklch(0.65 0.15 250)', 'oklch(0.75 0.18 45)', 'oklch(0.6 0.18 300)', 'oklch(0.7 0.2 30)']
 
+// Default data structures for charts with neutral values (0)
+// TODO: Replace with API calls to fetch real analytics data from backend
+const DEFAULT_MONTHLY_REVENUE = [
+  { month: 'Jan', revenue: 0, users: 0 },
+  { month: 'Feb', revenue: 0, users: 0 },
+  { month: 'Mar', revenue: 0, users: 0 },
+  { month: 'Apr', revenue: 0, users: 0 },
+  { month: 'May', revenue: 0, users: 0 },
+  { month: 'Jun', revenue: 0, users: 0 },
+  { month: 'Jul', revenue: 0, users: 0 },
+  { month: 'Aug', revenue: 0, users: 0 },
+  { month: 'Sep', revenue: 0, users: 0 },
+  { month: 'Oct', revenue: 0, users: 0 },
+  { month: 'Nov', revenue: 0, users: 0 },
+  { month: 'Dec', revenue: 0, users: 0 },
+]
+
+const DEFAULT_USER_GROWTH = [
+  { month: 'Jan', students: 0, instructors: 0 },
+  { month: 'Feb', students: 0, instructors: 0 },
+  { month: 'Mar', students: 0, instructors: 0 },
+  { month: 'Apr', students: 0, instructors: 0 },
+  { month: 'May', students: 0, instructors: 0 },
+  { month: 'Jun', students: 0, instructors: 0 },
+  { month: 'Jul', students: 0, instructors: 0 },
+  { month: 'Aug', students: 0, instructors: 0 },
+  { month: 'Sep', students: 0, instructors: 0 },
+  { month: 'Oct', students: 0, instructors: 0 },
+  { month: 'Nov', students: 0, instructors: 0 },
+  { month: 'Dec', students: 0, instructors: 0 },
+]
+
+const DEFAULT_COURSE_POPULARITY = [
+  { name: 'Crypto Trading 101', enrollments: 0, revenue: 0 },
+  { name: 'Day Trading', enrollments: 0, revenue: 0 },
+  { name: 'Technical Analysis', enrollments: 0, revenue: 0 },
+  { name: 'Options Trading', enrollments: 0, revenue: 0 },
+  { name: 'Forex Blueprint', enrollments: 0, revenue: 0 },
+]
+
+const DEFAULT_INSTRUCTOR_EARNINGS = [
+  { name: 'David Kim', earnings: 0 },
+  { name: 'Sarah Chen', earnings: 0 },
+  { name: 'Emily Davis', earnings: 0 },
+  { name: 'Amanda White', earnings: 0 },
+]
+
+const DEFAULT_CATEGORY_DATA = [
+  { name: 'Category 1', value: 0 },
+  { name: 'Category 2', value: 0 },
+  { name: 'Category 3', value: 0 },
+]
+
+const DEFAULT_PAYMENT_METHOD_DATA = [
+  { name: 'Credit Card', value: 0 },
+  { name: 'Debit Card', value: 0 },
+  { name: 'Wallet', value: 0 },
+]
+
+const DEFAULT_USER_DISTRIBUTION = [
+  { name: 'Students', value: 0 },
+  { name: 'Instructors', value: 0 },
+]
+
+const DEFAULT_TRANSACTION_STATUS = [
+  { name: 'Completed', value: 0 },
+  { name: 'Pending', value: 0 },
+  { name: 'Failed', value: 0 },
+  { name: 'Refunded', value: 0 },
+]
+
+const DEFAULT_DASHBOARD_STATS = {
+  totalRevenue: 0,
+  totalUsers: 0,
+  totalCourses: 0,
+  avgRevenuePerUser: 0,
+  monthlyGrowth: {
+    revenue: 0,
+    users: 0,
+    courses: 0,
+    instructors: 0,
+  },
+}
+
 export default function ReportsPage() {
   const [dateRange, setDateRange] = useState("month")
-
   const reportRef = useRef(null)
 
-  const stats = useMemo(() => {
-    const totalRevenue = transactions.filter(t => t.status === 'Completed').reduce((sum, t) => sum + t.amount, 0)
-    const totalUsers = users.length
-    const totalCourses = courses.length
-    const avgRevenuePerUser = totalRevenue / totalUsers
+  // TODO: Fetch analytics data from API based on dateRange
+  // useEffect(() => {
+  //   const fetchAnalytics = async () => {
+  //     const response = await fetch(`/api/reports/analytics?range=${dateRange}`)
+  //     const data = await response.json()
+  //     setAnalyticsData(data)
+  //   }
+  //   fetchAnalytics()
+  // }, [dateRange])
 
-    return {
-      totalRevenue,
-      totalUsers,
-      totalCourses,
-      avgRevenuePerUser,
-    }
-  }, [])
+  const stats = useMemo(() => ({
+    totalRevenue: DEFAULT_DASHBOARD_STATS.totalRevenue,
+    totalUsers: DEFAULT_DASHBOARD_STATS.totalUsers,
+    totalCourses: DEFAULT_DASHBOARD_STATS.totalCourses,
+    avgRevenuePerUser: DEFAULT_DASHBOARD_STATS.avgRevenuePerUser,
+  }), [])
 
-  const categoryData = useMemo(() => {
-    const categoryMap = new Map<string, number>()
-    userEnrollments.forEach((enrollment) => {
-      const existing = categoryMap.get(enrollment.courseName) || 0
-      categoryMap.set(enrollment.courseName, existing + 1)
-    })
-    return Array.from(categoryMap.entries()).map(([name, value]) => ({ name, value }))
-  }, [])
+  const dashboardStats = useMemo(() => DEFAULT_DASHBOARD_STATS, [])
 
-  const paymentMethodData = useMemo(() => {
-    const methodMap = new Map<string, number>()
-    transactions.forEach((t) => {
-      const existing = methodMap.get(t.paymentMethod) || 0
-      methodMap.set(t.paymentMethod, existing + 1)
-    })
-    return Array.from(methodMap.entries()).map(([name, value]) => ({ name, value }))
-  }, [])
+  const monthlyRevenue = useMemo(() => DEFAULT_MONTHLY_REVENUE, [])
+  const userGrowth = useMemo(() => DEFAULT_USER_GROWTH, [])
+  const coursePopularity = useMemo(() => DEFAULT_COURSE_POPULARITY, [])
+  const instructorEarningsData = useMemo(() => DEFAULT_INSTRUCTOR_EARNINGS, [])
+  const categoryData = useMemo(() => DEFAULT_CATEGORY_DATA, [])
+  const paymentMethodData = useMemo(() => DEFAULT_PAYMENT_METHOD_DATA, [])
+  const userDistribution = useMemo(() => DEFAULT_USER_DISTRIBUTION, [])
+  const transactionStatus = useMemo(() => DEFAULT_TRANSACTION_STATUS, [])
 
   const handleExportPDF = async () => {
-  try {
-    const pdf = new jsPDF("p", "mm", "a4")
+    try {
+      const pdf = new jsPDF("p", "mm", "a4")
 
-    pdf.setFontSize(22)
-    pdf.text("DTrade Capital Report", 20, 20)
+      pdf.setFontSize(22)
+      pdf.text("DTrade Capital Report", 20, 20)
 
-    pdf.setFontSize(14)
-    pdf.text("Total Revenue: $2,791", 20, 40)
-    pdf.text("Total Users: 2,716", 20, 50)
-    pdf.text("Active Courses: 2", 20, 60)
-    pdf.text("Avg Revenue/User: $174.44", 20, 70)
+      pdf.setFontSize(14)
+      pdf.text(`Total Revenue: $${stats.totalRevenue.toLocaleString()}`, 20, 40)
+      pdf.text(`Total Users: ${stats.totalUsers.toLocaleString()}`, 20, 50)
+      pdf.text(`Active Courses: ${stats.totalCourses.toLocaleString()}`, 20, 60)
+      pdf.text(`Avg Revenue/User: $${stats.avgRevenuePerUser.toFixed(2)}`, 20, 70)
 
-    pdf.save("dtrade-report.pdf")
-  } catch (error) {
-    console.error(error)
-    alert("PDF Export Failed")
+      pdf.save("dtrade-report.pdf")
+    } catch (error) {
+      console.error(error)
+      alert("PDF Export Failed")
+    }
   }
-}
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -308,10 +376,7 @@ export default function ReportsPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={[
-                            { name: 'Students', value: users.filter(u => u.role === 'Student').length },
-                            { name: 'Instructors', value: users.filter(u => u.role === 'Instructor').length },
-                          ]}
+                          data={userDistribution}
                           cx="50%"
                           cy="50%"
                           innerRadius={60}
@@ -421,12 +486,7 @@ export default function ReportsPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={[
-                            { name: 'Completed', value: transactions.filter(t => t.status === 'Completed').length },
-                            { name: 'Pending', value: transactions.filter(t => t.status === 'Pending').length },
-                            { name: 'Failed', value: transactions.filter(t => t.status === 'Failed').length },
-                            { name: 'Refunded', value: transactions.filter(t => t.status === 'Refunded').length },
-                          ]}
+                          data={transactionStatus}
                           cx="50%"
                           cy="50%"
                           innerRadius={60}

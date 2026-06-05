@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
 
 type LessonForm = {
   id: string
@@ -61,6 +62,10 @@ export default function CoursesPage() {
   const [bulkLessonText, setBulkLessonText] = useState<Record<string, string>>({})
   const [showCourseForm, setShowCourseForm] = useState(true)
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null)
+
+  // Password confirmation dialog states
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; type: 'course' | 'unit' | 'lesson' } | null>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -250,9 +255,90 @@ export default function CoursesPage() {
   }
 
   const handleDeleteCourse = (courseId: string) => {
-    const nextCourses = savedCourses.filter((course) => course.id !== courseId)
-    setSavedCourses(nextCourses)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCourses))
+    const course = savedCourses.find(c => c.id === courseId)
+    if (course) {
+      setItemToDelete({ id: courseId, name: course.title, type: 'course' })
+      setDeleteDialogOpen(true)
+    }
+  }
+
+  const handleDeleteUnit = (courseId: string, unitId: string) => {
+    const course = savedCourses.find(c => c.id === courseId)
+    if (course) {
+      const unit = course.units.find(u => u.id === unitId)
+      if (unit) {
+        setItemToDelete({
+          id: `${courseId}|${unitId}`,
+          name: unit.title || 'Unnamed Unit',
+          type: 'unit'
+        })
+        setDeleteDialogOpen(true)
+      }
+    }
+  }
+
+  const handleDeleteLesson = (courseId: string, unitId: string, lessonId: string) => {
+    const course = savedCourses.find(c => c.id === courseId)
+    if (course) {
+      const unit = course.units.find(u => u.id === unitId)
+      if (unit) {
+        const lesson = unit.lessons.find(l => l.id === lessonId)
+        if (lesson) {
+          setItemToDelete({
+            id: `${courseId}|${unitId}|${lessonId}`,
+            name: lesson.title || 'Unnamed Lesson',
+            type: 'lesson'
+          })
+          setDeleteDialogOpen(true)
+        }
+      }
+    }
+  }
+
+  const handleConfirmDelete = () => {
+    if (!itemToDelete) return
+
+    if (itemToDelete.type === 'course') {
+      const nextCourses = savedCourses.filter((course) => course.id !== itemToDelete.id)
+      setSavedCourses(nextCourses)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCourses))
+    } else if (itemToDelete.type === 'unit') {
+      const [courseId, unitId] = itemToDelete.id.split('|')
+      const nextCourses = savedCourses.map((course) => {
+        if (course.id === courseId) {
+          return {
+            ...course,
+            units: course.units.filter((u) => u.id !== unitId),
+          }
+        }
+        return course
+      })
+      setSavedCourses(nextCourses)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCourses))
+    } else if (itemToDelete.type === 'lesson') {
+      const [courseId, unitId, lessonId] = itemToDelete.id.split('|')
+      const nextCourses = savedCourses.map((course) => {
+        if (course.id === courseId) {
+          return {
+            ...course,
+            units: course.units.map((u) => {
+              if (u.id === unitId) {
+                return {
+                  ...u,
+                  lessons: u.lessons.filter((l) => l.id !== lessonId),
+                }
+              }
+              return u
+            }),
+          }
+        }
+        return course
+      })
+      setSavedCourses(nextCourses)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCourses))
+    }
+
+    setItemToDelete(null)
   }
 
   return (
@@ -472,7 +558,7 @@ export default function CoursesPage() {
                           <p className="text-sm text-muted-foreground mt-1">{course.description}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {course.tags.length ? course.tags.map((tag) => (
+                          {course.tags?.length ? course.tags.map((tag) => (
                             <span key={tag} className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">{tag}</span>
                           )) : (
                             <span className="rounded-full bg-muted-foreground/10 px-2 py-1 text-xs font-medium text-muted-foreground">No tags</span>
@@ -505,36 +591,21 @@ export default function CoursesPage() {
                               </TooltipTrigger>
                               <TooltipContent>Edit</TooltipContent>
                             </Tooltip>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="sm"
                                   className="size-8 p-0 text-red-600 hover:text-red-700"
                                   title="Delete course"
+                                  onClick={() => handleDeleteCourse(course.id)}
                                 >
                                   <Trash2 className="size-4" />
                                 </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Course</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete "{course.title}"? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleDeleteCourse(course.id)}
-                                    className="bg-red-600 hover:bg-red-700"
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                              </TooltipTrigger>
+                              <TooltipContent>Delete</TooltipContent>
+                            </Tooltip>
                             <ChevronRight className={`size-5 text-muted-foreground transition ${expandedCourseId === course.id ? 'rotate-90' : ''}`} />
                           </div>
                         </div>
@@ -561,7 +632,27 @@ export default function CoursesPage() {
                                             <p className="text-xs text-muted-foreground">{unit.lessons.length} lessons</p>
                                           </div>
                                         </div>
-                                        <ChevronRight className={`size-5 text-muted-foreground transition ${unitExpanded ? 'rotate-90' : ''}`} />
+                                        <div className="flex items-center gap-2">
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="size-8 p-0 text-red-600 hover:text-red-700"
+                                                title="Delete unit"
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  handleDeleteUnit(course.id, unit.id)
+                                                }}
+                                              >
+                                                <Trash2 className="size-4" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Delete Unit</TooltipContent>
+                                          </Tooltip>
+                                          <ChevronRight className={`size-5 text-muted-foreground transition ${unitExpanded ? 'rotate-90' : ''}`} />
+                                        </div>
                                       </button>
                                       {unitExpanded && (
                                         <div className="space-y-3 pt-3">
@@ -573,7 +664,24 @@ export default function CoursesPage() {
                                               <div className="flex-1">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                                   <p className="font-medium text-foreground">{lesson.title || 'Untitled Lesson'}</p>
-                                                  <span className="rounded-full bg-muted-foreground/10 px-2 py-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{lesson.type}</span>
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="rounded-full bg-muted-foreground/10 px-2 py-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{lesson.type}</span>
+                                                    <Tooltip>
+                                                      <TooltipTrigger asChild>
+                                                        <Button
+                                                          type="button"
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          className="size-6 p-0 text-red-600 hover:text-red-700"
+                                                          title="Delete lesson"
+                                                          onClick={() => handleDeleteLesson(course.id, unit.id, lesson.id)}
+                                                        >
+                                                          <Trash2 className="size-3" />
+                                                        </Button>
+                                                      </TooltipTrigger>
+                                                      <TooltipContent>Delete Lesson</TooltipContent>
+                                                    </Tooltip>
+                                                  </div>
                                                 </div>
                                                 <p className="text-sm text-muted-foreground mt-1">{lesson.duration}</p>
                                                 <p className="text-xs text-muted-foreground mt-2 break-all">{lesson.videoUrl || 'No video link provided'}</p>
@@ -597,6 +705,15 @@ export default function CoursesPage() {
             </CardContent>
           </Card>
         </div>
+
+        <PasswordConfirmationDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          itemName={itemToDelete?.name || ''}
+          itemType={itemToDelete?.type || 'course'}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setItemToDelete(null)}
+        />
       </main>
     </div>
   )

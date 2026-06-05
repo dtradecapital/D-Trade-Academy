@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { QuizCreator } from '@/components/quiz-creator'
+import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
 
 type SelectedLesson = {
     id: string
@@ -248,6 +249,14 @@ export default function VideosPage() {
     const [bulkLessonList, setBulkLessonList] = useState<Record<string, Array<{ id: string; title: string; duration: string; url: string }>>>({})
     const [bulkModes, setBulkModes] = useState<Record<string, boolean>>({})
     const [saveStatus, setSaveStatus] = useState<string | null>(null)
+
+    // Confirmation dialog states
+    const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false)
+    const [noteToDelete, setNoteToDelete] = useState<string | null>(null)
+    const [deleteCommentDialogOpen, setDeleteCommentDialogOpen] = useState(false)
+    const [commentToDelete, setCommentToDelete] = useState<string | null>(null)
+    const [deleteCourseDialogOpen, setDeleteCourseDialogOpen] = useState(false)
+    const [courseToDelete, setCourseToDelete] = useState<string | null>(null)
 
     const createUnit = (index: number) => ({
         id: `unit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${index}`,
@@ -514,16 +523,23 @@ export default function VideosPage() {
     }
 
     const handleDeleteNote = (noteId: string) => {
-        const confirmed = window.confirm('Delete this note?')
-        if (!confirmed || !selectedLesson) return
+        setNoteToDelete(noteId)
+        setDeleteNoteDialogOpen(true)
+    }
 
-        const nextNotes = lessonNotes.filter((note) => note.id !== noteId)
+    const handleConfirmDeleteNote = () => {
+        if (!noteToDelete || !selectedLesson) return
+
+        const nextNotes = lessonNotes.filter((note) => note.id !== noteToDelete)
         setLessonNotes(nextNotes)
         saveNotesToStorage(selectedLesson.id, nextNotes)
 
-        if (editingNoteId === noteId) {
+        if (editingNoteId === noteToDelete) {
             clearNoteForm()
         }
+
+        setDeleteNoteDialogOpen(false)
+        setNoteToDelete(null)
     }
 
     const handleNoteImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -562,13 +578,19 @@ export default function VideosPage() {
 
     const handleDeleteComment = (commentId: string) => {
         if (!selectedLesson) return
+        setCommentToDelete(commentId)
+        setDeleteCommentDialogOpen(true)
+    }
 
-        const confirmed = window.confirm('Are you sure?')
-        if (!confirmed) return
+    const handleConfirmDeleteComment = () => {
+        if (!commentToDelete || !selectedLesson) return
 
-        const nextComments = comments.filter((comment) => comment.id !== commentId)
+        const nextComments = comments.filter((comment) => comment.id !== commentToDelete)
         setComments(nextComments)
         localStorage.setItem(getCommentsKey(selectedLesson.id), JSON.stringify(nextComments))
+
+        setDeleteCommentDialogOpen(false)
+        setCommentToDelete(null)
     }
 
     const saveQuizToStorage = (lessonId: string, questions: QuizQuestion[]) => {
@@ -677,16 +699,23 @@ export default function VideosPage() {
     }
 
     const handleDeleteCourse = (courseId: string) => {
-        const confirmed = window.confirm('Are you sure you want to delete this course?')
-        if (!confirmed) return
+        setCourseToDelete(courseId)
+        setDeleteCourseDialogOpen(true)
+    }
 
-        const remainingCourses = courseList.filter((course) => course.id !== courseId)
+    const handleConfirmDeleteCourse = () => {
+        if (!courseToDelete) return
+
+        const remainingCourses = courseList.filter((course) => course.id !== courseToDelete)
         setCourseList(remainingCourses)
         localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(remainingCourses))
 
-        if (openCourseId === courseId) {
+        if (openCourseId === courseToDelete) {
             setOpenCourseId(null)
         }
+
+        setDeleteCourseDialogOpen(false)
+        setCourseToDelete(null)
     }
 
     return (
@@ -1287,7 +1316,7 @@ export default function VideosPage() {
                                                     </p>
                                                 </div>
                                             )}
-                                            
+
                                             {quizQuestions.map((question, qIdx) => (
                                                 <div key={question.id} className={`rounded-3xl border ${isQuizSubmitted && selectedAnswers[question.id] === question.correctAnswerIndex ? 'border-green-500/50' : isQuizSubmitted && selectedAnswers[question.id] !== undefined ? 'border-red-500/50' : 'border-border'} bg-background p-6`}>
                                                     <p className="text-sm font-medium text-foreground">{qIdx + 1}. {question.question}</p>
@@ -1296,7 +1325,7 @@ export default function VideosPage() {
                                                             const isSelected = selectedAnswers[question.id] === optIdx;
                                                             const isCorrect = question.correctAnswerIndex === optIdx;
                                                             let optionClass = "border-border bg-card hover:bg-card/80";
-                                                            
+
                                                             if (isQuizSubmitted) {
                                                                 if (isCorrect) {
                                                                     optionClass = "border-green-500 bg-green-500/10 text-green-700 dark:text-green-400";
@@ -1345,7 +1374,7 @@ export default function VideosPage() {
                                                     </Button>
                                                 )}
                                                 {!isQuizSubmitted ? (
-                                                    <Button 
+                                                    <Button
                                                         onClick={handleSubmitQuiz}
                                                         disabled={Object.keys(selectedAnswers).length < quizQuestions.length}
                                                         className="gap-2"
@@ -1353,7 +1382,7 @@ export default function VideosPage() {
                                                         Submit Quiz
                                                     </Button>
                                                 ) : (
-                                                    <Button 
+                                                    <Button
                                                         onClick={() => {
                                                             setIsQuizSubmitted(false)
                                                             setSelectedAnswers({})
@@ -1453,6 +1482,56 @@ export default function VideosPage() {
                     </div>
                 )}
             </div>
+
+            {/* Delete Note Confirmation Dialog */}
+            <Dialog open={deleteNoteDialogOpen} onOpenChange={setDeleteNoteDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Delete Note</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this note? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteNoteDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={handleConfirmDeleteNote}>
+                            Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Comment Confirmation Dialog */}
+            <Dialog open={deleteCommentDialogOpen} onOpenChange={setDeleteCommentDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Delete Comment</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this comment? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteCommentDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={handleConfirmDeleteComment}>
+                            Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Course Confirmation Dialog */}
+            <PasswordConfirmationDialog
+                open={deleteCourseDialogOpen}
+                onOpenChange={setDeleteCourseDialogOpen}
+                itemName={courseToDelete ? courseList.find(c => c.id === courseToDelete)?.title || '' : ''}
+                itemType="course"
+                onConfirm={handleConfirmDeleteCourse}
+                onCancel={() => setCourseToDelete(null)}
+            />
         </div>
     )
 }

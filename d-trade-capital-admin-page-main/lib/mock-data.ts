@@ -403,18 +403,18 @@ export const notifications: Notification[] = [
 
 // Analytics Data
 export const monthlyRevenue = [
-  { month: 'Jan', revenue: 45000, users: 120 },
-  { month: 'Feb', revenue: 52000, users: 145 },
-  { month: 'Mar', revenue: 48000, users: 138 },
-  { month: 'Apr', revenue: 61000, users: 162 },
-  { month: 'May', revenue: 55000, users: 155 },
-  { month: 'Jun', revenue: 67000, users: 178 },
-  { month: 'Jul', revenue: 72000, users: 195 },
-  { month: 'Aug', revenue: 69000, users: 188 },
-  { month: 'Sep', revenue: 78000, users: 210 },
-  { month: 'Oct', revenue: 82000, users: 225 },
-  { month: 'Nov', revenue: 88000, users: 242 },
-  { month: 'Dec', revenue: 95000, users: 268 },
+  { month: 'Jan', revenue: 0, users: 0 },
+  { month: 'Feb', revenue: 0, users: 0 },
+  { month: 'Mar', revenue: 0, users: 0 },
+  { month: 'Apr', revenue: 0, users: 0 },
+  { month: 'May', revenue: 0, users: 0 },
+  { month: 'Jun', revenue: 0, users: 0 },
+  { month: 'Jul', revenue: 0, users: 0 },
+  { month: 'Aug', revenue: 0, users: 0 },
+  { month: 'Sep', revenue: 0, users: 0 },
+  { month: 'Oct', revenue: 0, users: 0 },
+  { month: 'Nov', revenue: 0, users: 0 },
+  { month: 'Dec', revenue: 0, users: 0 },
 ]
 
 export const weeklyRevenue = [
@@ -428,78 +428,78 @@ export const weeklyRevenue = [
 ]
 
 export const userGrowth = [
-  { month: 'Jan', students: 850, instructors: 12 },
-  { month: 'Feb', students: 920, instructors: 14 },
-  { month: 'Mar', students: 1050, instructors: 15 },
-  { month: 'Apr', students: 1180, instructors: 17 },
-  { month: 'May', students: 1320, instructors: 19 },
-  { month: 'Jun', students: 1480, instructors: 21 },
-  { month: 'Jul', students: 1650, instructors: 23 },
-  { month: 'Aug', students: 1820, instructors: 25 },
-  { month: 'Sep', students: 2010, instructors: 27 },
-  { month: 'Oct', students: 2200, instructors: 29 },
-  { month: 'Nov', students: 2420, instructors: 31 },
-  { month: 'Dec', students: 2680, instructors: 34 },
+  { month: 'Jan', students: 0, instructors: 0 },
+  { month: 'Feb', students: 0, instructors: 0 },
+  { month: 'Mar', students: 0, instructors: 0 },
+  { month: 'Apr', students: 0, instructors: 0 },
+  { month: 'May', students: 0, instructors: 0 },
+  { month: 'Jun', students: 0, instructors: 0 },
+  { month: 'Jul', students: 0, instructors: 0 },
+  { month: 'Aug', students: 0, instructors: 0 },
+  { month: 'Sep', students: 0, instructors: 0 },
+  { month: 'Oct', students: 0, instructors: 0 },
+  { month: 'Nov', students: 0, instructors: 0 },
+  { month: 'Dec', students: 0, instructors: 0 },
 ]
 
 export const coursePopularity = [
-  { name: 'Crypto Trading 101', enrollments: 2100, revenue: 522900 },
-  { name: 'Day Trading', enrollments: 1650, revenue: 658350 },
-  { name: 'Technical Analysis', enrollments: 1250, revenue: 373750 },
-  { name: 'Options Trading', enrollments: 890, revenue: 177110 },
-  { name: 'Forex Blueprint', enrollments: 780, revenue: 272220 },
+  { name: 'Crypto Trading 101', enrollments: 0, revenue: 0 },
+  { name: 'Day Trading', enrollments: 0, revenue: 0 },
+  { name: 'Technical Analysis', enrollments: 0, revenue: 0 },
+  { name: 'Options Trading', enrollments: 0, revenue: 0 },
+  { name: 'Forex Blueprint', enrollments: 0, revenue: 0 },
 ]
 
 export const instructorEarningsData = [
-  { name: 'David Kim', earnings: 54600 },
-  { name: 'Sarah Chen', earnings: 36680 },
-  { name: 'Emily Davis', earnings: 22832 },
-  { name: 'Amanda White', earnings: 14656 },
+  { name: 'David Kim', earnings: 0 },
+  { name: 'Sarah Chen', earnings: 0 },
+  { name: 'Emily Davis', earnings: 0 },
+  { name: 'Amanda White', earnings: 0 },
 ]
 
 // Dashboard Stats
 export const dashboardStats = {
   // User counts by role
-  totalStudents: 2680,
-  totalInstructors: 34,
-  totalAdmins: 2,
-  totalUsers: 2716,
+  totalStudents: 0,
+  totalInstructors: 0,
+  totalAdmins: 0,
+  totalUsers: 0,
 
   // Course counts by status
-  publishedCourses: 7,
-  pendingCourses: 2,
-  draftCourses: 1,
-  archivedCourses: 1,
-  totalCourses: 10,
+  publishedCourses: 0,
+  pendingCourses: 0,
+  draftCourses: 0,
+  archivedCourses: 0,
+  totalCourses: 0,
 
   // Tools/Resources
-  totalTools: 8,
-  activeTools: 7,
+  totalTools: 0,
+  activeTools: 0,
 
   // Revenue
-  revenueToday: 1146, // TXN001 + TXN002 + TXN003 = 299 + 249 + 399 + 199
-  revenueThisWeek: 29600,
-  revenueThisMonth: 95000,
-  totalRevenue: 812000,
+  revenueToday: 0,
+  revenueThisWeek: 0,
+  revenueThisMonth: 0,
+  totalRevenue: 0,
 
   // Activity
-  newSignupsToday: 2, // Kevin Park and Rachel Green
-  activeSessions: 47,
+  newSignupsToday: 0,
+  activeSessions: 0,
 
   // Pending items
-  pendingCourseApprovals: 2,
+  pendingCourseApprovals: 0,
   pendingInstructorApprovals: 0,
-  pendingWithdrawals: 2, // Emily Davis (Requested) + Amanda White (Processing)
+  pendingWithdrawals: 0,
 
   // Support
-  openTickets: 3,
-  highPriorityTickets: 2,
+  openTickets: 0,
+  highPriorityTickets: 0,
 
   // Growth metrics
   monthlyGrowth: {
-    users: 12.5,
-    revenue: 8.2,
-    courses: 25,
-    instructors: 10,
+    users: 0,
+    revenue: 0,
+    courses: 0,
+    instructors: 0,
   },
 }
