@@ -71,6 +71,12 @@ export interface Quiz {
   questions: QuizQuestion[]
 }
 
+export interface CheatSheetFile {
+  name: string
+  dataUrl: string
+  type: 'application/pdf'
+}
+
 export interface Video {
   id: string
   title: string
@@ -81,6 +87,7 @@ export interface Video {
   quizQuestion?: string
   quizAnswer?: string
   quiz?: Quiz
+  cheatSheet?: CheatSheetFile | null
 }
 
 export interface Unit {

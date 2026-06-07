@@ -1,8 +1,8 @@
 'use client'
 
 import { ChangeEvent, useEffect, useState } from 'react'
-import { ChevronRight, Trash2, X, Edit3, Plus } from 'lucide-react'
-import { type Course, type QuizQuestion } from '@/lib/mock-data'
+import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, Clock, Edit3, FileText, HelpCircle, Layers, PlayCircle, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
+import { type CheatSheetFile, type Course, type QuizQuestion } from '@/lib/mock-data'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -15,6 +15,18 @@ type SelectedLesson = {
     description?: string
     duration?: string
     videoUrl: string
+    cheatSheet?: CheatSheetFile | null
+}
+
+type LessonDraft = {
+    title: string
+    duration: string
+    videoUrl: string
+    cheatSheet: CheatSheetFile | null
+}
+
+type BulkLessonDraft = LessonDraft & {
+    id: string
 }
 
 type LessonNote = {
@@ -245,18 +257,20 @@ export default function VideosPage() {
         },
     ])
     const [managingLessonsUnitId, setManagingLessonsUnitId] = useState<string | null>(null)
-    const [lessonDrafts, setLessonDrafts] = useState<Record<string, { title: string; duration: string; videoUrl: string }>>({})
-    const [bulkLessonList, setBulkLessonList] = useState<Record<string, Array<{ id: string; title: string; duration: string; url: string }>>>({})
+    const [lessonDrafts, setLessonDrafts] = useState<Record<string, LessonDraft>>({})
+    const [bulkLessonList, setBulkLessonList] = useState<Record<string, BulkLessonDraft[]>>({})
     const [bulkModes, setBulkModes] = useState<Record<string, boolean>>({})
     const [saveStatus, setSaveStatus] = useState<string | null>(null)
+    const [cheatSheetViewer, setCheatSheetViewer] = useState<CheatSheetFile | null>(null)
 
-    // Confirmation dialog states
-    const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false)
-    const [noteToDelete, setNoteToDelete] = useState<string | null>(null)
-    const [deleteCommentDialogOpen, setDeleteCommentDialogOpen] = useState(false)
-    const [commentToDelete, setCommentToDelete] = useState<string | null>(null)
-    const [deleteCourseDialogOpen, setDeleteCourseDialogOpen] = useState(false)
-    const [courseToDelete, setCourseToDelete] = useState<string | null>(null)
+    // Unified delete protection dialog state
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+    const [pendingDelete, setPendingDelete] = useState<{
+        type: 'course' | 'note' | 'comment' | 'cheat-sheet' | 'video-attachment'
+        id: string
+        name: string
+        extra?: string // for composite keys like unitId|videoId
+    } | null>(null)
 
     const createUnit = (index: number) => ({
         id: `unit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${index}`,
@@ -288,6 +302,18 @@ export default function VideosPage() {
         setNewCourseUnits((current) => current + 1)
     }
 
+    const createEmptyLessonDraft = (): LessonDraft => ({
+        title: '',
+        duration: '30 mins',
+        videoUrl: '',
+        cheatSheet: null,
+    })
+
+    const createEmptyBulkLessonDraft = (): BulkLessonDraft => ({
+        id: Math.random().toString(),
+        ...createEmptyLessonDraft(),
+    })
+
     const updateLessonDraft = (unitId: string, field: 'title' | 'duration' | 'videoUrl', value: string) => {
         setLessonDrafts((current) => ({
             ...current,
@@ -295,13 +321,55 @@ export default function VideosPage() {
                 title: current[unitId]?.title ?? '',
                 duration: current[unitId]?.duration ?? '30 mins',
                 videoUrl: current[unitId]?.videoUrl ?? '',
+                cheatSheet: current[unitId]?.cheatSheet ?? null,
                 [field]: value,
             },
         }))
     }
 
+    const readPdfCheatSheet = async (file: File): Promise<CheatSheetFile | null> => {
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            showToast('Please upload a PDF file.')
+            return null
+        }
+
+        const dataUrl = await readFileAsDataUrl(file)
+        return {
+            name: file.name,
+            dataUrl,
+            type: 'application/pdf',
+        }
+    }
+
+    const handleLessonCheatSheetChange = async (unitId: string, event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+
+        const cheatSheet = await readPdfCheatSheet(file)
+        if (!cheatSheet) return
+
+        setLessonDrafts((current) => ({
+            ...current,
+            [unitId]: {
+                ...(current[unitId] ?? createEmptyLessonDraft()),
+                cheatSheet,
+            },
+        }))
+    }
+
+    const removeLessonDraftCheatSheet = (unitId: string) => {
+        setLessonDrafts((current) => ({
+            ...current,
+            [unitId]: {
+                ...(current[unitId] ?? createEmptyLessonDraft()),
+                cheatSheet: null,
+            },
+        }))
+    }
+
     const addLessonToUnit = (unitId: string) => {
-        const draft = lessonDrafts[unitId] ?? { title: '', duration: '30 mins', videoUrl: '' }
+        const draft = lessonDrafts[unitId] ?? createEmptyLessonDraft()
         if (!draft.title.trim()) return
 
         const newLesson = {
@@ -309,6 +377,7 @@ export default function VideosPage() {
             title: draft.title.trim(),
             url: draft.videoUrl.trim() || '',
             duration: draft.duration.trim() || '30 mins',
+            cheatSheet: draft.cheatSheet,
         }
 
         setCourseUnits((current) =>
@@ -321,20 +390,21 @@ export default function VideosPage() {
 
         setLessonDrafts((current) => ({
             ...current,
-            [unitId]: { title: '', duration: '30 mins', videoUrl: '' },
+            [unitId]: createEmptyLessonDraft(),
         }))
     }
 
     const addBulkLessonsToUnit = (unitId: string) => {
         const lessons = bulkLessonList[unitId] ?? []
-        const validLessons = lessons.filter(l => l.title.trim() || l.url.trim())
+        const validLessons = lessons.filter(l => l.title.trim() || l.videoUrl.trim() || l.cheatSheet)
         if (validLessons.length === 0) return
 
         const newLessons = validLessons.map((l, idx) => ({
             id: `lesson-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${idx}`,
             title: l.title.trim() || `Lesson ${idx + 1}`,
             duration: l.duration.trim() || '30 mins',
-            url: l.url.trim() || '',
+            url: l.videoUrl.trim() || '',
+            cheatSheet: l.cheatSheet,
         }))
 
         setCourseUnits((current) =>
@@ -351,20 +421,47 @@ export default function VideosPage() {
 
     const addBulkLessonRow = (unitId: string) => {
         setBulkLessonList(cur => {
-            const list = cur[unitId] ?? [{ id: Math.random().toString(), title: '', duration: '30 mins', url: '' }]
+            const list = cur[unitId] ?? [createEmptyBulkLessonDraft()]
             return {
                 ...cur,
-                [unitId]: [...list, { id: Math.random().toString(), title: '', duration: '30 mins', url: '' }]
+                [unitId]: [...list, createEmptyBulkLessonDraft()]
             }
         })
     }
 
-    const updateBulkLesson = (unitId: string, lessonId: string, field: 'title' | 'duration' | 'url', value: string) => {
+    const updateBulkLesson = (unitId: string, lessonId: string, field: 'title' | 'duration' | 'videoUrl', value: string) => {
         setBulkLessonList(cur => {
-            const list = cur[unitId] ?? [{ id: Math.random().toString(), title: '', duration: '30 mins', url: '' }]
+            const list = cur[unitId] ?? [createEmptyBulkLessonDraft()]
             return {
                 ...cur,
                 [unitId]: list.map(l => l.id === lessonId ? { ...l, [field]: value } : l)
+            }
+        })
+    }
+
+    const handleBulkLessonCheatSheetChange = async (unitId: string, lessonId: string, event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+
+        const cheatSheet = await readPdfCheatSheet(file)
+        if (!cheatSheet) return
+
+        setBulkLessonList(cur => {
+            const list = cur[unitId] ?? [createEmptyBulkLessonDraft()]
+            return {
+                ...cur,
+                [unitId]: list.map(l => l.id === lessonId ? { ...l, cheatSheet } : l)
+            }
+        })
+    }
+
+    const removeBulkLessonCheatSheet = (unitId: string, lessonId: string) => {
+        setBulkLessonList(cur => {
+            const list = cur[unitId] ?? [createEmptyBulkLessonDraft()]
+            return {
+                ...cur,
+                [unitId]: list.map(l => l.id === lessonId ? { ...l, cheatSheet: null } : l)
             }
         })
     }
@@ -444,15 +541,73 @@ export default function VideosPage() {
         setActiveTab(null)
     }, [selectedLesson])
 
-    const handleLessonClick = (video: { id: string; title: string; description?: string; duration?: string; url: string }) => {
+    const handleLessonClick = (video: Course['units'][number]['videos'][number]) => {
         setSelectedLesson({
             id: video.id,
             title: video.title,
             description: video.description,
             duration: video.duration,
             videoUrl: video.url,
+            cheatSheet: video.cheatSheet,
         })
         setSelectedVideo(video.url)
+    }
+
+    const updateSavedLessonCheatSheet = (lessonId: string, cheatSheet: CheatSheetFile | null) => {
+        const nextCourseList = courseList.map((course) => ({
+            ...course,
+            units: course.units.map((unit) => ({
+                ...unit,
+                videos: unit.videos.map((video) =>
+                    video.id === lessonId ? { ...video, cheatSheet } : video,
+                ),
+            })),
+        }))
+
+        setCourseList(nextCourseList)
+        localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(nextCourseList))
+
+        setSelectedLesson((current) =>
+            current?.id === lessonId ? { ...current, cheatSheet } : current,
+        )
+    }
+
+    const handleSavedLessonCheatSheetChange = async (lessonId: string, event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+
+        const cheatSheet = await readPdfCheatSheet(file)
+        if (!cheatSheet) return
+
+        updateSavedLessonCheatSheet(lessonId, cheatSheet)
+        showToast('Cheat sheet updated.')
+    }
+
+    const updateCourseUnitLessonCheatSheet = (unitId: string, lessonId: string, cheatSheet: CheatSheetFile | null) => {
+        setCourseUnits((current) =>
+            current.map((unit) =>
+                unit.id === unitId
+                    ? {
+                        ...unit,
+                        videos: unit.videos.map((video) =>
+                            video.id === lessonId ? { ...video, cheatSheet } : video,
+                        ),
+                    }
+                    : unit,
+            ),
+        )
+    }
+
+    const handleCourseUnitLessonCheatSheetChange = async (unitId: string, lessonId: string, event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+
+        const cheatSheet = await readPdfCheatSheet(file)
+        if (!cheatSheet) return
+
+        updateCourseUnitLessonCheatSheet(unitId, lessonId, cheatSheet)
     }
 
     const getYouTubeEmbedUrl = (url: string | null) => {
@@ -523,23 +678,13 @@ export default function VideosPage() {
     }
 
     const handleDeleteNote = (noteId: string) => {
-        setNoteToDelete(noteId)
-        setDeleteNoteDialogOpen(true)
-    }
-
-    const handleConfirmDeleteNote = () => {
-        if (!noteToDelete || !selectedLesson) return
-
-        const nextNotes = lessonNotes.filter((note) => note.id !== noteToDelete)
-        setLessonNotes(nextNotes)
-        saveNotesToStorage(selectedLesson.id, nextNotes)
-
-        if (editingNoteId === noteToDelete) {
-            clearNoteForm()
-        }
-
-        setDeleteNoteDialogOpen(false)
-        setNoteToDelete(null)
+        const note = lessonNotes.find((n) => n.id === noteId)
+        setPendingDelete({
+            type: 'note',
+            id: noteId,
+            name: note?.text?.slice(0, 40) || 'this note',
+        })
+        setDeleteDialogOpen(true)
     }
 
     const handleNoteImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -578,19 +723,13 @@ export default function VideosPage() {
 
     const handleDeleteComment = (commentId: string) => {
         if (!selectedLesson) return
-        setCommentToDelete(commentId)
-        setDeleteCommentDialogOpen(true)
-    }
-
-    const handleConfirmDeleteComment = () => {
-        if (!commentToDelete || !selectedLesson) return
-
-        const nextComments = comments.filter((comment) => comment.id !== commentToDelete)
-        setComments(nextComments)
-        localStorage.setItem(getCommentsKey(selectedLesson.id), JSON.stringify(nextComments))
-
-        setDeleteCommentDialogOpen(false)
-        setCommentToDelete(null)
+        const comment = comments.find((c) => c.id === commentId)
+        setPendingDelete({
+            type: 'comment',
+            id: commentId,
+            name: comment?.text?.slice(0, 40) || 'this comment',
+        })
+        setDeleteDialogOpen(true)
     }
 
     const saveQuizToStorage = (lessonId: string, questions: QuizQuestion[]) => {
@@ -699,24 +838,128 @@ export default function VideosPage() {
     }
 
     const handleDeleteCourse = (courseId: string) => {
-        setCourseToDelete(courseId)
-        setDeleteCourseDialogOpen(true)
+        const course = courseList.find((c) => c.id === courseId)
+        setPendingDelete({
+            type: 'course',
+            id: courseId,
+            name: course?.title || 'this course',
+        })
+        setDeleteDialogOpen(true)
     }
 
-    const handleConfirmDeleteCourse = () => {
-        if (!courseToDelete) return
+    // Unified confirm handler — dispatches to the correct delete logic based on pendingDelete.type
+    const handleConfirmDelete = () => {
+        if (!pendingDelete) return
 
-        const remainingCourses = courseList.filter((course) => course.id !== courseToDelete)
-        setCourseList(remainingCourses)
-        localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(remainingCourses))
-
-        if (openCourseId === courseToDelete) {
-            setOpenCourseId(null)
+        if (pendingDelete.type === 'course') {
+            const remainingCourses = courseList.filter((course) => course.id !== pendingDelete.id)
+            setCourseList(remainingCourses)
+            localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(remainingCourses))
+            if (openCourseId === pendingDelete.id) {
+                setOpenCourseId(null)
+            }
+        } else if (pendingDelete.type === 'note') {
+            if (!selectedLesson) return
+            const nextNotes = lessonNotes.filter((note) => note.id !== pendingDelete.id)
+            setLessonNotes(nextNotes)
+            saveNotesToStorage(selectedLesson.id, nextNotes)
+            if (editingNoteId === pendingDelete.id) {
+                clearNoteForm()
+            }
+        } else if (pendingDelete.type === 'comment') {
+            if (!selectedLesson) return
+            const nextComments = comments.filter((comment) => comment.id !== pendingDelete.id)
+            setComments(nextComments)
+            localStorage.setItem(getCommentsKey(selectedLesson.id), JSON.stringify(nextComments))
+        } else if (pendingDelete.type === 'cheat-sheet') {
+            // extra encodes 'saved|lessonId' or 'draft|unitId' or 'bulk|unitId|lessonId' or 'courseunit|unitId|videoId'
+            const parts = (pendingDelete.extra ?? '').split('|')
+            const ctx = parts[0]
+            if (ctx === 'saved') {
+                updateSavedLessonCheatSheet(parts[1], null)
+                showToast('Cheat sheet deleted.')
+            } else if (ctx === 'draft') {
+                removeLessonDraftCheatSheet(parts[1])
+            } else if (ctx === 'bulk') {
+                removeBulkLessonCheatSheet(parts[1], parts[2])
+            } else if (ctx === 'courseunit') {
+                updateCourseUnitLessonCheatSheet(parts[1], parts[2], null)
+            }
         }
 
-        setDeleteCourseDialogOpen(false)
-        setCourseToDelete(null)
+        setPendingDelete(null)
     }
+
+    const selectedCourse = openCourseId ? courseList.find((course) => course.id === openCourseId) ?? null : null
+
+    const getCourseLessonCount = (course: Course) =>
+        course.units.reduce((total, unit) => total + unit.videos.length, 0)
+
+    const getCourseQuizCount = (course: Course) =>
+        course.units.reduce((total, unit) => (
+            total + unit.videos.filter((video) => hasQuizForLesson(video)).length
+        ), 0)
+
+    const hasQuizForLesson = (video: Course['units'][number]['videos'][number]) => {
+        if (video.quiz?.questions?.length) return true
+        if (typeof window === 'undefined') return false
+
+        try {
+            return loadQuizFromStorage(video.id).length > 0
+        } catch {
+            return false
+        }
+    }
+
+    const getCourseProgressLabel = (course: Course) => {
+        const lessonCount = getCourseLessonCount(course)
+        if (lessonCount === 0) return 'Draft'
+
+        const lessonsWithVideo = course.units.reduce((total, unit) => (
+            total + unit.videos.filter((video) => Boolean(video.url)).length
+        ), 0)
+        const lessonsWithPdf = course.units.reduce((total, unit) => (
+            total + unit.videos.filter((video) => Boolean(video.cheatSheet)).length
+        ), 0)
+        const lessonsWithQuiz = getCourseQuizCount(course)
+
+        if (lessonsWithVideo === lessonCount && lessonsWithPdf === lessonCount && lessonsWithQuiz === lessonCount) {
+            return 'Complete'
+        }
+
+        return 'In Progress'
+    }
+
+    const getCourseThumbnailClass = (index: number) => {
+        const thumbnails = [
+            'from-cyan-500/30 via-slate-900 to-emerald-500/30',
+            'from-amber-500/30 via-slate-900 to-rose-500/30',
+            'from-sky-500/30 via-slate-900 to-violet-500/30',
+            'from-lime-500/30 via-slate-900 to-teal-500/30',
+            'from-fuchsia-500/30 via-slate-900 to-orange-500/30',
+            'from-blue-500/30 via-slate-900 to-red-500/30',
+        ]
+
+        return thumbnails[index % thumbnails.length]
+    }
+
+    const getCourseInitials = (title: string) =>
+        title
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((word) => word[0]?.toUpperCase())
+            .join('')
+
+    const renderLessonStatus = (active: boolean, label: string, Icon: LucideIcon) => (
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${active
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+            : 'border-border bg-background text-muted-foreground'
+            }`}>
+            {active ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
+            {label}
+        </span>
+    )
 
     return (
         <div className="min-h-screen bg-background px-6 py-10 text-foreground">
@@ -875,7 +1118,7 @@ export default function VideosPage() {
                                                         onClick={() => {
                                                             setBulkModes(cur => ({ ...cur, [unit.id]: true }))
                                                             if (!bulkLessonList[unit.id] || bulkLessonList[unit.id].length === 0) {
-                                                                setBulkLessonList(cur => ({ ...cur, [unit.id]: [{ id: Math.random().toString(), title: '', duration: '30 mins', url: '' }] }))
+                                                                setBulkLessonList(cur => ({ ...cur, [unit.id]: [createEmptyBulkLessonDraft()] }))
                                                             }
                                                         }}
                                                         className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${bulkModes[unit.id] ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
@@ -887,7 +1130,7 @@ export default function VideosPage() {
                                                 {bulkModes[unit.id] ? (
                                                     <div className="space-y-4">
                                                         <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                                                            {(bulkLessonList[unit.id] || [{ id: 'default', title: '', duration: '30 mins', url: '' }]).map((lesson, index) => (
+                                                            {(bulkLessonList[unit.id] || [{ id: 'default', ...createEmptyLessonDraft() }]).map((lesson, index) => (
                                                                 <div key={lesson.id} className="relative grid gap-4 rounded-xl border border-border bg-slate-950/5 p-4">
                                                                     <div className="flex items-center justify-between">
                                                                         <span className="text-xs font-semibold uppercase text-muted-foreground">Lesson {index + 1}</span>
@@ -924,12 +1167,49 @@ export default function VideosPage() {
                                                                     <label className="space-y-2 text-sm text-muted-foreground">
                                                                         <span>Video URL</span>
                                                                         <input
-                                                                            value={lesson.url}
-                                                                            onChange={(e) => updateBulkLesson(unit.id, lesson.id, 'url', e.target.value)}
+                                                                            value={lesson.videoUrl}
+                                                                            onChange={(e) => updateBulkLesson(unit.id, lesson.id, 'videoUrl', e.target.value)}
                                                                             placeholder="https://example.com/video.mp4"
                                                                             className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
                                                                         />
                                                                     </label>
+                                                                    <div className="rounded-xl border border-border bg-background/70 p-3">
+                                                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                                                            <span className="text-sm text-muted-foreground">Cheat Sheet PDF</span>
+                                                                            {lesson.cheatSheet && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        setPendingDelete({ type: 'cheat-sheet', id: lesson.id, name: lesson.cheatSheet?.name ?? 'cheat sheet', extra: `bulk|${unit.id}|${lesson.id}` })
+                                                                                        setDeleteDialogOpen(true)
+                                                                                    }}
+                                                                                    className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition hover:text-red-500"
+                                                                                >
+                                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                                    Delete
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                        {lesson.cheatSheet && (
+                                                                            <div className="mb-3 flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-foreground">
+                                                                                <FileText className="h-4 w-4 text-primary" />
+                                                                                <span className="truncate">{lesson.cheatSheet.name}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        <input
+                                                                            id={`bulk-cheat-sheet-${unit.id}-${lesson.id}`}
+                                                                            type="file"
+                                                                            accept="application/pdf,.pdf"
+                                                                            onChange={(event) => handleBulkLessonCheatSheetChange(unit.id, lesson.id, event)}
+                                                                            className="sr-only"
+                                                                        />
+                                                                        <label
+                                                                            htmlFor={`bulk-cheat-sheet-${unit.id}-${lesson.id}`}
+                                                                            className="inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-dashed border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground transition hover:bg-card"
+                                                                        >
+                                                                            {lesson.cheatSheet ? 'Replace Cheat Sheet' : 'Upload Cheat Sheet'}
+                                                                        </label>
+                                                                    </div>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -979,6 +1259,43 @@ export default function VideosPage() {
                                                                 className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
                                                             />
                                                         </label>
+                                                        <div className="rounded-xl border border-border bg-slate-950/5 p-4">
+                                                            <div className="mb-3 flex items-center justify-between gap-3">
+                                                                <span className="text-sm text-muted-foreground">Cheat Sheet PDF</span>
+                                                                {lessonDrafts[unit.id]?.cheatSheet && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setPendingDelete({ type: 'cheat-sheet', id: unit.id, name: lessonDrafts[unit.id]?.cheatSheet?.name ?? 'cheat sheet', extra: `draft|${unit.id}` })
+                                                                            setDeleteDialogOpen(true)
+                                                                        }}
+                                                                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition hover:text-red-500"
+                                                                    >
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                        Delete
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            {lessonDrafts[unit.id]?.cheatSheet && (
+                                                                <div className="mb-3 flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-foreground">
+                                                                    <FileText className="h-4 w-4 text-primary" />
+                                                                    <span className="truncate">{lessonDrafts[unit.id]?.cheatSheet?.name}</span>
+                                                                </div>
+                                                            )}
+                                                            <input
+                                                                id={`lesson-cheat-sheet-${unit.id}`}
+                                                                type="file"
+                                                                accept="application/pdf,.pdf"
+                                                                onChange={(event) => handleLessonCheatSheetChange(unit.id, event)}
+                                                                className="sr-only"
+                                                            />
+                                                            <label
+                                                                htmlFor={`lesson-cheat-sheet-${unit.id}`}
+                                                                className="inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-dashed border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground transition hover:bg-card"
+                                                            >
+                                                                {lessonDrafts[unit.id]?.cheatSheet ? 'Replace Cheat Sheet' : 'Upload Cheat Sheet'}
+                                                            </label>
+                                                        </div>
                                                         <button
                                                             type="button"
                                                             onClick={() => addLessonToUnit(unit.id)}
@@ -998,9 +1315,52 @@ export default function VideosPage() {
                                                     ) : (
                                                         <ul className="space-y-2">
                                                             {unit.videos.map((video) => (
-                                                                <li key={video.id} className="flex justify-between items-center rounded-xl bg-slate-50/5 border border-border px-4 py-3 text-sm text-foreground">
-                                                                    <div className="font-medium truncate max-w-[200px] sm:max-w-xs">{video.title}</div>
-                                                                    <div className="text-muted-foreground text-xs whitespace-nowrap">{video.duration ?? '30 mins'}</div>
+                                                                <li key={video.id} className="rounded-xl bg-slate-50/5 border border-border px-4 py-3 text-sm text-foreground">
+                                                                    <div className="flex justify-between items-center gap-3">
+                                                                        <div className="font-medium truncate max-w-[200px] sm:max-w-xs">{video.title}</div>
+                                                                        <div className="text-muted-foreground text-xs whitespace-nowrap">{video.duration ?? '30 mins'}</div>
+                                                                    </div>
+                                                                    {video.cheatSheet && (
+                                                                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                                            <FileText className="h-4 w-4 text-primary" />
+                                                                            <span className="max-w-[220px] truncate">{video.cheatSheet.name}</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setCheatSheetViewer(video.cheatSheet ?? null)}
+                                                                                className="rounded-lg border border-border px-2 py-1 text-foreground transition hover:bg-card"
+                                                                            >
+                                                                                View Cheat Sheet
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                                        <input
+                                                                            id={`course-unit-cheat-sheet-${unit.id}-${video.id}`}
+                                                                            type="file"
+                                                                            accept="application/pdf,.pdf"
+                                                                            onChange={(event) => handleCourseUnitLessonCheatSheetChange(unit.id, video.id, event)}
+                                                                            className="sr-only"
+                                                                        />
+                                                                        <label
+                                                                            htmlFor={`course-unit-cheat-sheet-${unit.id}-${video.id}`}
+                                                                            className="inline-flex cursor-pointer items-center rounded-lg border border-border px-2 py-1 text-xs text-foreground transition hover:bg-card"
+                                                                        >
+                                                                            {video.cheatSheet ? 'Replace Cheat Sheet' : 'Add Cheat Sheet'}
+                                                                        </label>
+                                                                        {video.cheatSheet && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setPendingDelete({ type: 'cheat-sheet', id: video.id, name: video.cheatSheet?.name ?? 'cheat sheet', extra: `courseunit|${unit.id}|${video.id}` })
+                                                                                    setDeleteDialogOpen(true)
+                                                                                }}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition hover:text-red-500"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                                Delete
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
                                                                 </li>
                                                             ))}
                                                         </ul>
@@ -1053,6 +1413,27 @@ export default function VideosPage() {
                                 />
                             )}
                         </div>
+
+                        {selectedLesson.cheatSheet && (
+                            <div className="rounded-3xl border border-border bg-card p-5">
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-foreground">Cheat Sheet</h3>
+                                        <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                                            <FileText className="h-4 w-4 text-primary" />
+                                            <span className="truncate">{selectedLesson.cheatSheet.name}</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCheatSheetViewer(selectedLesson.cheatSheet ?? null)}
+                                        className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-card/80"
+                                    >
+                                        View Cheat Sheet
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="mt-6 flex flex-wrap items-center gap-4 border-b border-border pb-3">
                             <button
@@ -1409,128 +1790,266 @@ export default function VideosPage() {
                             </div>
                         )}
                     </div>
-                ) : (
-                    <div className="space-y-4">
-                        {courseList.map((course) => {
-                            const open = openCourseId === course.id
-                            return (
-                                <div key={course.id} className="rounded-3xl border border-border bg-card">
-                                    <div className="flex flex-col gap-4 px-6 py-6 sm:flex-row sm:items-start sm:justify-between">
-                                        <button
-                                            type="button"
-                                            className="flex-1 text-left text-foreground transition hover:bg-card/10 sm:pr-4"
-                                            onClick={() => setOpenCourseId(open ? null : course.id)}
-                                        >
-                                            <div className="flex items-start justify-between gap-4">
-                                                <div>
-                                                    <h2 className="text-lg font-semibold">{course.title}</h2>
-                                                    <p className="mt-1 text-sm text-muted-foreground">
-                                                        {course.unitCount} units · {course.durationWeeks} weeks
-                                                    </p>
-                                                </div>
-                                                <ChevronRight className={`size-5 text-muted-foreground transition ${open ? 'rotate-90' : ''}`} />
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={(event) => {
-                                                event.stopPropagation()
-                                                handleDeleteCourse(course.id)
-                                            }}
-                                            className="inline-flex items-center justify-center rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-red-50 hover:text-red-600"
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" />
-                                            Delete
-                                        </button>
-                                    </div>
+                ) : selectedCourse ? (
+                    <div className="space-y-6">
+                        <div className="rounded-3xl border border-border bg-card p-6 shadow-[0_20px_60px_-40px_rgba(0,0,0,0.75)]">
+                            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="min-w-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setOpenCourseId(null)}
+                                        className="mb-5 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground"
+                                    >
+                                        <ArrowLeft className="h-4 w-4" />
+                                        Back to courses
+                                    </button>
+                                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Course Detail</p>
+                                    <h2 className="mt-3 text-3xl font-semibold text-foreground">{selectedCourse.title}</h2>
+                                    <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{selectedCourse.description}</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                                        {getCourseProgressLabel(selectedCourse)}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDeleteCourse(selectedCourse.id)}
+                                        className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/15"
+                                    >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
 
-                                    {open && (
-                                        <div className="border-t border-border px-6 pb-6 pt-4">
-                                            {course.units.length ? (
-                                                <div className="space-y-4">
-                                                    {course.units.map((unit) => (
-                                                        <div key={unit.id} className="rounded-3xl bg-background/50 p-4">
-                                                            <div className="mb-3 text-sm font-semibold text-foreground">{unit.title}</div>
-                                                            <ul className="space-y-2">
-                                                                {unit.videos.map((video) => (
-                                                                    <li key={video.id}>
+                            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                                <div className="rounded-2xl border border-border bg-background/70 p-4">
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <Clock className="h-4 w-4 text-primary" />
+                                        Duration
+                                    </div>
+                                    <p className="mt-2 text-xl font-semibold text-foreground">{selectedCourse.durationWeeks} Weeks</p>
+                                </div>
+                                <div className="rounded-2xl border border-border bg-background/70 p-4">
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <Layers className="h-4 w-4 text-primary" />
+                                        Units
+                                    </div>
+                                    <p className="mt-2 text-xl font-semibold text-foreground">{selectedCourse.units.length}</p>
+                                </div>
+                                <div className="rounded-2xl border border-border bg-background/70 p-4">
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <BookOpen className="h-4 w-4 text-primary" />
+                                        Lessons
+                                    </div>
+                                    <p className="mt-2 text-xl font-semibold text-foreground">{getCourseLessonCount(selectedCourse)}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            {selectedCourse.units.length ? (
+                                selectedCourse.units.map((unit, unitIndex) => (
+                                    <section key={unit.id} className="rounded-3xl border border-border bg-card p-5">
+                                        <div className="mb-4 flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Unit {unitIndex + 1}</p>
+                                                <h3 className="mt-1 text-lg font-semibold text-foreground">{unit.title}</h3>
+                                            </div>
+                                            <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
+                                                {unit.videos.length} lesson{unit.videos.length === 1 ? '' : 's'}
+                                            </span>
+                                        </div>
+                                        {unit.videos.length ? (
+                                            <ul className="space-y-3">
+                                                {unit.videos.map((video, lessonIndex) => {
+                                                    const hasVideo = Boolean(video.url)
+                                                    const hasPdf = Boolean(video.cheatSheet)
+                                                    const hasQuiz = hasQuizForLesson(video)
+
+                                                    return (
+                                                        <li key={video.id} className="rounded-2xl border border-border bg-background/70 p-4">
+                                                            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleLessonClick(video)}
+                                                                    className="min-w-0 flex-1 text-left"
+                                                                >
+                                                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                                                        Lesson {lessonIndex + 1}
+                                                                    </p>
+                                                                    <h4 className="mt-1 font-semibold text-foreground">{video.title}</h4>
+                                                                    <p className="mt-1 text-xs text-muted-foreground">{video.duration ?? 'Lesson video'}</p>
+                                                                </button>
+
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {renderLessonStatus(hasVideo, hasVideo ? 'Video Added' : 'No Video', PlayCircle)}
+                                                                    {renderLessonStatus(hasPdf, hasPdf ? 'PDF Cheat Sheet Added' : 'No PDF', FileText)}
+                                                                    {renderLessonStatus(hasQuiz, hasQuiz ? 'Quiz Added' : 'No Quiz', HelpCircle)}
+                                                                </div>
+
+                                                                <div className="flex flex-wrap gap-2 xl:justify-end">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleLessonClick(video)}
+                                                                        className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition hover:bg-card/80"
+                                                                    >
+                                                                        Open Lesson
+                                                                    </button>
+                                                                    {video.cheatSheet && (
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => handleLessonClick(video)}
-                                                                            className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-left text-foreground transition hover:bg-card/10"
+                                                                            onClick={() => setCheatSheetViewer(video.cheatSheet ?? null)}
+                                                                            className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition hover:bg-card/80"
                                                                         >
-                                                                            <div>
-                                                                                <p className="font-medium">{video.title}</p>
-                                                                                <p className="mt-1 text-xs text-muted-foreground">{video.duration ?? 'Lesson video'}</p>
-                                                                            </div>
-                                                                            <ChevronRight className="size-4 text-muted-foreground" />
+                                                                            View Cheat Sheet
                                                                         </button>
-                                                                    </li>
-                                                                ))}
-                                                            </ul>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground">No units available yet.</p>
-                                            )}
-                                        </div>
-                                    )}
+                                                                    )}
+                                                                    <input
+                                                                        id={`saved-cheat-sheet-${video.id}`}
+                                                                        type="file"
+                                                                        accept="application/pdf,.pdf"
+                                                                        onChange={(event) => handleSavedLessonCheatSheetChange(video.id, event)}
+                                                                        className="sr-only"
+                                                                    />
+                                                                    <label
+                                                                        htmlFor={`saved-cheat-sheet-${video.id}`}
+                                                                        className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition hover:bg-card/80"
+                                                                    >
+                                                                        {video.cheatSheet ? 'Replace PDF' : 'Add PDF'}
+                                                                    </label>
+                                                                    {video.cheatSheet && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setPendingDelete({ type: 'cheat-sheet', id: video.id, name: video.cheatSheet?.name ?? 'cheat sheet', extra: `saved|${video.id}` })
+                                                                                setDeleteDialogOpen(true)
+                                                                            }}
+                                                                            className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground transition hover:text-red-500"
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    )
+                                                })}
+                                            </ul>
+                                        ) : (
+                                            <div className="rounded-2xl border border-dashed border-border bg-background/60 p-6 text-center text-sm text-muted-foreground">
+                                                No lessons added yet.
+                                            </div>
+                                        )}
+                                    </section>
+                                ))
+                            ) : (
+                                <div className="rounded-3xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">
+                                    No units available yet.
                                 </div>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                        {courseList.map((course, index) => {
+                            const lessonCount = getCourseLessonCount(course)
+                            const progressLabel = getCourseProgressLabel(course)
+                            return (
+                                <article key={course.id} className="overflow-hidden rounded-3xl border border-border bg-card shadow-[0_18px_60px_-42px_rgba(0,0,0,0.9)] transition hover:-translate-y-1 hover:border-primary/40">
+                                    <div className={`relative flex aspect-[16/9] items-end bg-gradient-to-br ${getCourseThumbnailClass(index)} p-5`}>
+                                        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.14),rgba(255,255,255,0)_35%,rgba(0,0,0,0.35))]" />
+                                        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-black/25 text-lg font-semibold text-white shadow-lg">
+                                            {getCourseInitials(course.title)}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex min-h-[330px] flex-col p-5">
+                                        <div className="mb-3 flex items-start justify-between gap-3">
+                                            <h2 className="line-clamp-2 text-xl font-semibold text-foreground">{course.title}</h2>
+                                            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${progressLabel === 'Complete'
+                                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                                : progressLabel === 'Draft'
+                                                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                                                    : 'border-primary/30 bg-primary/10 text-primary'
+                                                }`}>
+                                                {progressLabel}
+                                            </span>
+                                        </div>
+                                        <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">{course.description}</p>
+
+                                        <div className="mt-5 grid grid-cols-3 gap-2 text-sm">
+                                            <div className="rounded-2xl border border-border bg-background/70 p-3">
+                                                <Layers className="mb-2 h-4 w-4 text-primary" />
+                                                <p className="font-semibold text-foreground">{course.units.length}</p>
+                                                <p className="text-xs text-muted-foreground">Units</p>
+                                            </div>
+                                            <div className="rounded-2xl border border-border bg-background/70 p-3">
+                                                <Clock className="mb-2 h-4 w-4 text-primary" />
+                                                <p className="font-semibold text-foreground">{course.durationWeeks}</p>
+                                                <p className="text-xs text-muted-foreground">Weeks</p>
+                                            </div>
+                                            <div className="rounded-2xl border border-border bg-background/70 p-3">
+                                                <BookOpen className="mb-2 h-4 w-4 text-primary" />
+                                                <p className="font-semibold text-foreground">{lessonCount}</p>
+                                                <p className="text-xs text-muted-foreground">Lessons</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-auto grid gap-2 pt-5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setOpenCourseId(course.id)}
+                                                className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary/90"
+                                            >
+                                                Open Course
+                                                <ChevronRight className="ml-2 h-4 w-4" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteCourse(course.id)}
+                                                className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/15"
+                                            >
+                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                </article>
                             )
+                            
                         })}
                     </div>
                 )}
             </div>
 
-            {/* Delete Note Confirmation Dialog */}
-            <Dialog open={deleteNoteDialogOpen} onOpenChange={setDeleteNoteDialogOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Delete Note</DialogTitle>
-                        <DialogDescription>
-                            Are you sure you want to delete this note? This action cannot be undone.
-                        </DialogDescription>
+            <Dialog open={!!cheatSheetViewer} onOpenChange={(open) => !open && setCheatSheetViewer(null)}>
+                <DialogContent className="flex h-[85vh] max-w-5xl flex-col rounded-3xl border-white/10 p-0 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]">
+                    <DialogHeader className="border-b border-border px-6 py-4">
+                        <DialogTitle className="flex items-center gap-2">
+                            <FileText className="h-5 w-5 text-primary" />
+                            {cheatSheetViewer?.name ?? 'Cheat Sheet'}
+                        </DialogTitle>
+                        <DialogDescription>PDF cheat sheet preview</DialogDescription>
                     </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteNoteDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button variant="destructive" onClick={handleConfirmDeleteNote}>
-                            Delete
-                        </Button>
-                    </DialogFooter>
+                    {cheatSheetViewer && (
+                        <iframe
+                            src={cheatSheetViewer.dataUrl}
+                            title={cheatSheetViewer.name}
+                            className="min-h-0 flex-1 rounded-b-3xl bg-background"
+                        />
+                    )}
                 </DialogContent>
             </Dialog>
 
-            {/* Delete Comment Confirmation Dialog */}
-            <Dialog open={deleteCommentDialogOpen} onOpenChange={setDeleteCommentDialogOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Delete Comment</DialogTitle>
-                        <DialogDescription>
-                            Are you sure you want to delete this comment? This action cannot be undone.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteCommentDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button variant="destructive" onClick={handleConfirmDeleteComment}>
-                            Delete
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Delete Course Confirmation Dialog */}
+            {/* Unified Delete Protection Modal — covers all delete actions in Learn Hub */}
             <PasswordConfirmationDialog
-                open={deleteCourseDialogOpen}
-                onOpenChange={setDeleteCourseDialogOpen}
-                itemName={courseToDelete ? courseList.find(c => c.id === courseToDelete)?.title || '' : ''}
-                itemType="course"
-                onConfirm={handleConfirmDeleteCourse}
-                onCancel={() => setCourseToDelete(null)}
+                open={deleteDialogOpen}
+                onOpenChange={setDeleteDialogOpen}
+                itemName={pendingDelete?.name ?? ''}
+                itemType={pendingDelete?.type ?? 'course'}
+                onConfirm={handleConfirmDelete}
+                onCancel={() => setPendingDelete(null)}
             />
         </div>
     )
