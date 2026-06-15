@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Trash2, Plus, Save } from 'lucide-react'
 import { type QuizQuestion } from '@/lib/mock-data'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface QuizCreatorProps {
     lessonId: string
@@ -19,7 +20,7 @@ interface QuizCreatorProps {
 interface QuestionDraft {
     tempId: string
     question: string
-    options: [string, string, string, string]
+    options: string[]
     correctAnswerIndex: number
     explanation?: string
 }
@@ -29,7 +30,7 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
         initialQuestions.map((q, idx) => ({
             tempId: `q-${idx}`,
             question: q.question,
-            options: q.options,
+            options: [...q.options],
             correctAnswerIndex: q.correctAnswerIndex,
             explanation: q.explanation,
         }))
@@ -38,8 +39,8 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
     const generateId = () => `q-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
     const addQuestion = () => {
-        setQuestions([
-            ...questions,
+        setQuestions(prev => [
+            ...prev,
             {
                 tempId: generateId(),
                 question: '',
@@ -51,22 +52,49 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
     }
 
     const removeQuestion = (tempId: string) => {
-        setQuestions(questions.filter((q) => q.tempId !== tempId))
+        setQuestions(prev => prev.filter(q => q.tempId !== tempId))
     }
 
-    const updateQuestion = (tempId: string, field: keyof QuestionDraft, value: any) => {
-        setQuestions(
-            questions.map((q) =>
-                q.tempId === tempId ? { ...q, [field]: value } : q
-            )
+    const updateQuestion = (tempId: string, field: keyof QuestionDraft, value: unknown) => {
+        setQuestions(prev =>
+            prev.map(q => (q.tempId === tempId ? { ...q, [field]: value } : q))
+        )
+    }
+
+    const addOption = (tempId: string) => {
+        setQuestions(prev =>
+            prev.map(q => {
+                if (q.tempId === tempId) {
+                    return { ...q, options: [...q.options, ''] }
+                }
+                return q
+            })
+        )
+    }
+
+    const removeOption = (tempId: string, optionIndex: number) => {
+        setQuestions(prev =>
+            prev.map(q => {
+                if (q.tempId === tempId) {
+                    const newOptions = q.options.filter((_, idx) => idx !== optionIndex)
+                    let newCorrectIndex = q.correctAnswerIndex
+                    if (newCorrectIndex === optionIndex) {
+                        newCorrectIndex = 0
+                    } else if (newCorrectIndex > optionIndex) {
+                        newCorrectIndex -= 1
+                    }
+                    return { ...q, options: newOptions, correctAnswerIndex: newCorrectIndex }
+                }
+                return q
+            })
         )
     }
 
     const updateOption = (tempId: string, optionIndex: number, value: string) => {
-        setQuestions(
-            questions.map((q) => {
+        setQuestions(prev =>
+            prev.map(q => {
                 if (q.tempId === tempId) {
-                    const newOptions = [...q.options] as [string, string, string, string]
+                    const newOptions = [...q.options]
                     newOptions[optionIndex] = value
                     return { ...q, options: newOptions }
                 }
@@ -76,16 +104,16 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
     }
 
     const handleSave = () => {
-        // Validate all questions have required fields
         const isValid = questions.every(
-            (q) =>
+            q =>
                 q.question.trim() &&
-                q.options.every((o) => o.trim()) &&
+                q.options.length >= 2 &&
+                q.options.every(o => o.trim()) &&
                 q.correctAnswerIndex >= 0
         )
 
         if (!isValid) {
-            alert('Please fill in all required fields for each question')
+            alert('Please fill in all required fields for each question (min 2 options)')
             return
         }
 
@@ -129,23 +157,26 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
                         <Card key={question.tempId}>
                             <CardHeader className="pb-3">
                                 <div className="flex items-start justify-between">
-                                    <div>
-                                        <CardTitle className="text-base">
-                                            Question {questionIndex + 1}
-                                        </CardTitle>
-                                    </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => removeQuestion(question.tempId)}
-                                        className="text-destructive hover:text-destructive"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </Button>
+                                    <CardTitle className="text-base">
+                                        Question {questionIndex + 1}
+                                    </CardTitle>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => removeQuestion(question.tempId)}
+                                                className="text-destructive hover:text-destructive"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Delete Question</TooltipContent>
+                                    </Tooltip>
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                {/* Question Input */}
+                                {/* Question Text */}
                                 <div>
                                     <Label htmlFor={`question-${question.tempId}`} className="text-sm font-medium">
                                         Question Text *
@@ -154,14 +185,12 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
                                         id={`question-${question.tempId}`}
                                         placeholder="Enter the quiz question..."
                                         value={question.question}
-                                        onChange={(e) =>
-                                            updateQuestion(question.tempId, 'question', e.target.value)
-                                        }
+                                        onChange={e => updateQuestion(question.tempId, 'question', e.target.value)}
                                         className="mt-2"
                                     />
                                 </div>
 
-                                {/* Options Input */}
+                                {/* Options */}
                                 <div className="space-y-3">
                                     <Label className="text-sm font-medium">Answer Options *</Label>
                                     <div className="space-y-2">
@@ -169,7 +198,7 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
                                             <div key={optionIndex} className="flex items-center gap-3">
                                                 <RadioGroup
                                                     value={question.correctAnswerIndex.toString()}
-                                                    onValueChange={(value) =>
+                                                    onValueChange={value =>
                                                         updateQuestion(
                                                             question.tempId,
                                                             'correctAnswerIndex',
@@ -193,20 +222,50 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
                                                 <Input
                                                     placeholder={`Option ${String.fromCharCode(65 + optionIndex)}`}
                                                     value={option}
-                                                    onChange={(e) =>
+                                                    onChange={e =>
                                                         updateOption(question.tempId, optionIndex, e.target.value)
                                                     }
                                                     className="flex-1"
                                                 />
+                                                {question.options.length > 2 && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                type="button"
+                                                                onClick={() => removeOption(question.tempId, optionIndex)}
+                                                                className="size-9 text-muted-foreground hover:text-red-500 shrink-0"
+                                                            >
+                                                                <Trash2 className="size-4" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>Remove Option</TooltipContent>
+                                                    </Tooltip>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        Select the radio button for the correct answer
-                                    </p>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs text-muted-foreground">
+                                            Select the radio button next to the correct answer
+                                        </p>
+                                        {question.options.length < 6 && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => addOption(question.tempId)}
+                                                className="h-8 text-xs gap-1"
+                                            >
+                                                <Plus className="w-3 h-3" />
+                                                Add Option
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {/* Explanation Input */}
+                                {/* Explanation */}
                                 <div>
                                     <Label htmlFor={`explanation-${question.tempId}`} className="text-sm font-medium">
                                         Explanation (Optional)
@@ -215,7 +274,7 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
                                         id={`explanation-${question.tempId}`}
                                         placeholder="Explain why this is the correct answer..."
                                         value={question.explanation || ''}
-                                        onChange={(e) =>
+                                        onChange={e =>
                                             updateQuestion(question.tempId, 'explanation', e.target.value)
                                         }
                                         className="mt-2"
@@ -229,11 +288,7 @@ export function QuizCreator({ lessonId, initialQuestions = [], onSave, onCancel 
 
             {/* Add Question Button */}
             {questions.length > 0 && (
-                <Button
-                    onClick={addQuestion}
-                    variant="outline"
-                    className="w-full"
-                >
+                <Button onClick={addQuestion} variant="outline" className="w-full">
                     <Plus className="w-4 h-4 mr-2" />
                     Add Another Question
                 </Button>

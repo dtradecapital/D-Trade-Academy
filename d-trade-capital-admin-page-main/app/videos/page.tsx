@@ -1,13 +1,14 @@
 'use client'
 
 import { ChangeEvent, useEffect, useState } from 'react'
-import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, Clock, Edit3, FileText, HelpCircle, Layers, PlayCircle, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, Clock, Edit3, FileText, HelpCircle, Layers, PlayCircle, Plus, Trash2, X, Pencil, type LucideIcon } from 'lucide-react'
 import { type CheatSheetFile, type Course, type QuizQuestion } from '@/lib/mock-data'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { QuizCreator } from '@/components/quiz-creator'
 import { PasswordConfirmationDialog } from '@/components/password-confirmation-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 type SelectedLesson = {
     id: string
@@ -262,6 +263,36 @@ export default function VideosPage() {
     const [bulkModes, setBulkModes] = useState<Record<string, boolean>>({})
     const [saveStatus, setSaveStatus] = useState<string | null>(null)
     const [cheatSheetViewer, setCheatSheetViewer] = useState<CheatSheetFile | null>(null)
+
+    // Edit functionality states
+    const [editingCourseId, setEditingCourseId] = useState<string | null>(null)
+    const [newCourseThumbnail, setNewCourseThumbnail] = useState<string | null>(null)
+    const [editingUnit, setEditingUnit] = useState<{
+        courseId: string
+        unitId: string
+        title: string
+        description: string
+    } | null>(null)
+    const [editingLesson, setEditingLesson] = useState<{
+        courseId: string
+        unitId: string
+        lessonId: string
+        title: string
+        description: string
+        duration: string
+        videoUrl: string
+        videoFile?: string | null
+        order: number
+        originalUnitId: string
+    } | null>(null)
+    const [editingCheatSheet, setEditingCheatSheet] = useState<{
+        courseId: string
+        unitId: string
+        lessonId: string
+        name: string
+        description: string
+        dataUrl: string
+    } | null>(null)
 
     // Unified delete protection dialog state
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -803,25 +834,8 @@ export default function VideosPage() {
         localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(prebuiltCourses))
     }, [])
 
-    const handleSaveCourse = () => {
-        if (!newCourseTitle.trim() || !newCourseDescription.trim()) {
-            setSaveStatus('Please provide a course title and description.')
-            return
-        }
-
-        const newCourse: Course = {
-            id: `course-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            title: newCourseTitle.trim(),
-            description: newCourseDescription.trim(),
-            durationWeeks: Math.max(1, newCourseWeeks),
-            unitCount: courseUnits.length,
-            units: courseUnits,
-        }
-
-        const nextCourseList = [newCourse, ...courseList]
-        setCourseList(nextCourseList)
-        localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(nextCourseList))
-
+    const resetCourseForm = () => {
+        setEditingCourseId(null)
         setNewCourseTitle('')
         setNewCourseDescription('')
         setNewCourseWeeks(4)
@@ -833,8 +847,155 @@ export default function VideosPage() {
                 videos: [],
             },
         ])
-        setSaveStatus('Course saved successfully.')
+        setNewCourseThumbnail(null)
+        setSaveStatus(null)
+    }
+
+    const handleEditCourse = (course: Course) => {
+        setEditingCourseId(course.id)
+        setNewCourseTitle(course.title)
+        setNewCourseDescription(course.description)
+        setNewCourseWeeks(course.durationWeeks)
+        setNewCourseUnits(course.units.length)
+        setCourseUnits(course.units.map(u => ({ ...u, description: u.description ?? '' })))
+        setNewCourseThumbnail(course.thumbnail ?? null)
         setShowAddCourseForm(true)
+    }
+
+    const handleSaveCourse = () => {
+        if (!newCourseTitle.trim() || !newCourseDescription.trim()) {
+            setSaveStatus('Please provide a course title and description.')
+            return
+        }
+
+        if (editingCourseId) {
+            const nextCourseList = courseList.map((course) =>
+                course.id === editingCourseId
+                    ? {
+                        ...course,
+                        title: newCourseTitle.trim(),
+                        description: newCourseDescription.trim(),
+                        durationWeeks: Math.max(1, newCourseWeeks),
+                        unitCount: courseUnits.length,
+                        units: courseUnits,
+                        thumbnail: newCourseThumbnail ?? undefined,
+                    }
+                    : course
+            )
+            setCourseList(nextCourseList)
+            localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(nextCourseList))
+            setSaveStatus('Course updated successfully.')
+            setShowAddCourseForm(false)
+            resetCourseForm()
+        } else {
+            const newCourse: Course = {
+                id: `course-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                title: newCourseTitle.trim(),
+                description: newCourseDescription.trim(),
+                durationWeeks: Math.max(1, newCourseWeeks),
+                unitCount: courseUnits.length,
+                units: courseUnits,
+                thumbnail: newCourseThumbnail ?? undefined,
+            }
+
+            const nextCourseList = [newCourse, ...courseList]
+            setCourseList(nextCourseList)
+            localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(nextCourseList))
+            setSaveStatus('Course saved successfully.')
+            setShowAddCourseForm(false)
+            resetCourseForm()
+        }
+    }
+
+    const handleSaveUnit = () => {
+        if (!editingUnit || !editingUnit.title.trim()) return
+
+        const nextCourseList = courseList.map((course) => {
+            if (course.id === editingUnit.courseId) {
+                return {
+                    ...course,
+                    units: course.units.map((u) =>
+                        u.id === editingUnit.unitId
+                            ? { ...u, title: editingUnit.title.trim(), description: editingUnit.description.trim() }
+                            : u
+                    ),
+                }
+            }
+            return course
+        })
+
+        setCourseList(nextCourseList)
+        localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(nextCourseList))
+        setEditingUnit(null)
+        showToast('Unit updated successfully.')
+    }
+
+    const handleSaveLesson = () => {
+        if (!editingLesson || !editingLesson.title.trim()) return
+
+        const nextCourseList = courseList.map((course) => {
+            if (course.id !== editingLesson.courseId) return course
+            return {
+                ...course,
+                units: course.units.map((unit) => {
+                    // Remove lesson from original unit (handles move between units)
+                    const filteredVideos = unit.videos.filter((v) => v.id !== editingLesson.lessonId)
+                    if (unit.id === editingLesson.unitId) {
+                        // Rebuild list with edited lesson inserted at desired order position
+                        const updatedLesson = {
+                            ...unit.videos.find((v) => v.id === editingLesson.lessonId)!,
+                            title: editingLesson.title.trim(),
+                            description: editingLesson.description.trim() || undefined,
+                            duration: editingLesson.duration.trim() || '30 mins',
+                            url: editingLesson.videoUrl.trim(),
+                        }
+                        const without = unit.videos.filter((v) => v.id !== editingLesson.lessonId)
+                        const insertAt = Math.max(0, Math.min(editingLesson.order - 1, without.length))
+                        const reordered = [...without.slice(0, insertAt), updatedLesson, ...without.slice(insertAt)]
+                        return { ...unit, videos: reordered }
+                    }
+                    return { ...unit, videos: filteredVideos }
+                }),
+            }
+        })
+
+        setCourseList(nextCourseList)
+        localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(nextCourseList))
+        setEditingLesson(null)
+        showToast('Lesson updated successfully.')
+    }
+
+    const handleSaveCheatSheet = () => {
+        if (!editingCheatSheet) return
+        const nextCourseList = courseList.map((course) => {
+            if (course.id !== editingCheatSheet.courseId) return course
+            return {
+                ...course,
+                units: course.units.map((unit) => {
+                    if (unit.id !== editingCheatSheet.unitId) return unit
+                    return {
+                        ...unit,
+                        videos: unit.videos.map((video) => {
+                            if (video.id !== editingCheatSheet.lessonId) return video
+                            return {
+                                ...video,
+                                cheatSheet: {
+                                    ...(video.cheatSheet ?? { type: 'application/pdf' as const, dataUrl: editingCheatSheet.dataUrl }),
+                                    name: editingCheatSheet.name.trim() || video.cheatSheet?.name || 'Cheat Sheet',
+                                    description: editingCheatSheet.description.trim() || undefined,
+                                    dataUrl: editingCheatSheet.dataUrl || video.cheatSheet?.dataUrl || '',
+                                    type: 'application/pdf' as const,
+                                },
+                            }
+                        }),
+                    }
+                }),
+            }
+        })
+        setCourseList(nextCourseList)
+        localStorage.setItem(SAVED_COURSES_KEY, JSON.stringify(nextCourseList))
+        setEditingCheatSheet(null)
+        showToast('Cheat sheet updated successfully.')
     }
 
     const handleDeleteCourse = (courseId: string) => {
@@ -978,10 +1139,14 @@ export default function VideosPage() {
                                 Master Trading with Structured Courses.
                             </p>
                         </div>
-                        <Dialog open={showAddCourseForm} onOpenChange={setShowAddCourseForm}>
+                        <Dialog open={showAddCourseForm} onOpenChange={(open) => {
+                            setShowAddCourseForm(open)
+                            if (!open) resetCourseForm()
+                        }}>
                             <DialogTrigger asChild>
                                 <button
                                     type="button"
+                                    onClick={() => resetCourseForm()}
                                     className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary/90"
                                 >
                                     + Add Course
@@ -989,8 +1154,10 @@ export default function VideosPage() {
                             </DialogTrigger>
                             <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-2xl rounded-3xl border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]">
                                 <DialogHeader>
-                                    <DialogTitle>Add Course</DialogTitle>
-                                    <DialogDescription>Create a new course in the Learn Hub.</DialogDescription>
+                                    <DialogTitle>{editingCourseId ? 'Edit Course' : 'Add Course'}</DialogTitle>
+                                    <DialogDescription>
+                                        {editingCourseId ? 'Modify course details and units.' : 'Create a new course in the Learn Hub.'}
+                                    </DialogDescription>
                                 </DialogHeader>
                                 <div className="flex-1 overflow-y-auto pr-1 min-h-0">
                                     <div className="space-y-4">
@@ -1024,6 +1191,48 @@ export default function VideosPage() {
                                                 className="min-h-[120px] w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary"
                                             />
                                         </label>
+
+                                        {/* Thumbnail Upload component */}
+                                        <div className="rounded-2xl border border-border bg-slate-950/5 p-4 space-y-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span className="text-sm font-semibold text-foreground">Course Thumbnail (Optional)</span>
+                                                {newCourseThumbnail && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setNewCourseThumbnail(null)}
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-xs text-muted-foreground transition hover:text-red-500"
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                        Remove
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {newCourseThumbnail && (
+                                                <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border border-border">
+                                                    <img src={newCourseThumbnail} alt="Thumbnail preview" className="h-full w-full object-cover" />
+                                                </div>
+                                            )}
+                                            <input
+                                                id="course-thumbnail-upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0]
+                                                    if (file) {
+                                                        const dataUrl = await readFileAsDataUrl(file)
+                                                        setNewCourseThumbnail(dataUrl)
+                                                    }
+                                                }}
+                                                className="sr-only"
+                                            />
+                                            <label
+                                                htmlFor="course-thumbnail-upload"
+                                                className="inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-dashed border-border bg-transparent px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-card"
+                                            >
+                                                {newCourseThumbnail ? 'Replace Thumbnail' : 'Upload Thumbnail'}
+                                            </label>
+                                        </div>
+
                                         <label className="space-y-2 text-sm text-muted-foreground sm:w-1/2">
                                             <span>Number of Units</span>
                                             <input
@@ -1084,7 +1293,7 @@ export default function VideosPage() {
                                 </div>
                                 <DialogFooter>
                                     <Button type="button" onClick={handleSaveCourse}>
-                                        Save Course
+                                        {editingCourseId ? 'Update Course' : 'Save Course'}
                                     </Button>
                                 </DialogFooter>
                             </DialogContent>
@@ -1811,14 +2020,30 @@ export default function VideosPage() {
                                     <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
                                         {getCourseProgressLabel(selectedCourse)}
                                     </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleDeleteCourse(selectedCourse.id)}
-                                        className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/15"
-                                    >
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Delete
-                                    </button>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleEditCourse(selectedCourse)}
+                                                className="inline-flex items-center justify-center rounded-lg border border-border bg-card p-2 text-foreground transition hover:bg-card/80"
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Edit</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteCourse(selectedCourse.id)}
+                                                className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-300 transition hover:bg-red-500/15"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Delete</TooltipContent>
+                                    </Tooltip>
                                 </div>
                             </div>
 
@@ -1854,7 +2079,29 @@ export default function VideosPage() {
                                         <div className="mb-4 flex items-center justify-between gap-3">
                                             <div>
                                                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Unit {unitIndex + 1}</p>
-                                                <h3 className="mt-1 text-lg font-semibold text-foreground">{unit.title}</h3>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="mt-1 text-lg font-semibold text-foreground">{unit.title}</h3>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setEditingUnit({
+                                                                    courseId: selectedCourse.id,
+                                                                    unitId: unit.id,
+                                                                    title: unit.title,
+                                                                    description: unit.description ?? ''
+                                                                })}
+                                                                className="mt-1 inline-flex items-center justify-center rounded-lg p-1 text-muted-foreground hover:text-foreground transition"
+                                                            >
+                                                                <Pencil className="h-4 w-4" />
+                                                            </button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>Edit</TooltipContent>
+                                                    </Tooltip>
+                                                </div>
+                                                {unit.description && (
+                                                    <p className="mt-1 text-xs text-muted-foreground max-w-2xl leading-relaxed">{unit.description}</p>
+                                                )}
                                             </div>
                                             <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
                                                 {unit.videos.length} lesson{unit.videos.length === 1 ? '' : 's'}
@@ -1896,39 +2143,89 @@ export default function VideosPage() {
                                                                     >
                                                                         Open Lesson
                                                                     </button>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setEditingLesson({
+                                                                                    courseId: selectedCourse.id,
+                                                                                    unitId: unit.id,
+                                                                                    lessonId: video.id,
+                                                                                    title: video.title,
+                                                                                    description: video.description ?? '',
+                                                                                    duration: video.duration ?? '30 mins',
+                                                                                    videoUrl: video.url,
+                                                                                    order: unit.videos.indexOf(video) + 1,
+                                                                                    originalUnitId: unit.id,
+                                                                                })}
+                                                                                className="inline-flex items-center justify-center rounded-lg border border-border bg-card p-2 text-foreground transition hover:bg-card/80"
+                                                                            >
+                                                                                <Pencil className="h-4 w-4" />
+                                                                            </button>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>Edit</TooltipContent>
+                                                                    </Tooltip>
                                                                     {video.cheatSheet && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => setCheatSheetViewer(video.cheatSheet ?? null)}
-                                                                            className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition hover:bg-card/80"
-                                                                        >
-                                                                            View Cheat Sheet
-                                                                        </button>
+                                                                        <>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setCheatSheetViewer(video.cheatSheet ?? null)}
+                                                                                className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition hover:bg-card/80"
+                                                                            >
+                                                                                View PDF
+                                                                            </button>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setEditingCheatSheet({
+                                                                                            courseId: selectedCourse.id,
+                                                                                            unitId: unit.id,
+                                                                                            lessonId: video.id,
+                                                                                            name: video.cheatSheet?.name ?? '',
+                                                                                            description: video.cheatSheet?.description ?? '',
+                                                                                            dataUrl: video.cheatSheet?.dataUrl ?? '',
+                                                                                        })}
+                                                                                        className="inline-flex items-center justify-center rounded-lg border border-border bg-card p-2 text-foreground transition hover:bg-card/80"
+                                                                                    >
+                                                                                        <Pencil className="h-4 w-4" />
+                                                                                    </button>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent>Edit Cheat Sheet</TooltipContent>
+                                                                            </Tooltip>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            setPendingDelete({ type: 'cheat-sheet', id: video.id, name: video.cheatSheet?.name ?? 'cheat sheet', extra: `saved|${video.id}` })
+                                                                                            setDeleteDialogOpen(true)
+                                                                                        }}
+                                                                                        className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/15"
+                                                                                    >
+                                                                                        <Trash2 className="h-4 w-4" />
+                                                                                    </button>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent>Delete Cheat Sheet</TooltipContent>
+                                                                            </Tooltip>
+                                                                        </>
                                                                     )}
-                                                                    <input
-                                                                        id={`saved-cheat-sheet-${video.id}`}
-                                                                        type="file"
-                                                                        accept="application/pdf,.pdf"
-                                                                        onChange={(event) => handleSavedLessonCheatSheetChange(video.id, event)}
-                                                                        className="sr-only"
-                                                                    />
-                                                                    <label
-                                                                        htmlFor={`saved-cheat-sheet-${video.id}`}
-                                                                        className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition hover:bg-card/80"
-                                                                    >
-                                                                        {video.cheatSheet ? 'Replace PDF' : 'Add PDF'}
-                                                                    </label>
-                                                                    {video.cheatSheet && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                setPendingDelete({ type: 'cheat-sheet', id: video.id, name: video.cheatSheet?.name ?? 'cheat sheet', extra: `saved|${video.id}` })
-                                                                                setDeleteDialogOpen(true)
-                                                                            }}
-                                                                            className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground transition hover:text-red-500"
-                                                                        >
-                                                                            <Trash2 className="h-4 w-4" />
-                                                                        </button>
+                                                                    {!video.cheatSheet && (
+                                                                        <>
+                                                                            <input
+                                                                                id={`saved-cheat-sheet-${video.id}`}
+                                                                                type="file"
+                                                                                accept="application/pdf,.pdf"
+                                                                                onChange={(event) => handleSavedLessonCheatSheetChange(video.id, event)}
+                                                                                className="sr-only"
+                                                                            />
+                                                                            <label
+                                                                                htmlFor={`saved-cheat-sheet-${video.id}`}
+                                                                                className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition hover:bg-card/80"
+                                                                            >
+                                                                                Add PDF
+                                                                            </label>
+                                                                        </>
                                                                     )}
                                                                 </div>
                                                             </div>
@@ -1957,7 +2254,10 @@ export default function VideosPage() {
                             const progressLabel = getCourseProgressLabel(course)
                             return (
                                 <article key={course.id} className="overflow-hidden rounded-3xl border border-border bg-card shadow-[0_18px_60px_-42px_rgba(0,0,0,0.9)] transition hover:-translate-y-1 hover:border-primary/40">
-                                    <div className={`relative flex aspect-[16/9] items-end bg-gradient-to-br ${getCourseThumbnailClass(index)} p-5`}>
+                                    <div className={`relative flex aspect-[16/9] items-end ${course.thumbnail ? '' : 'bg-gradient-to-br ' + getCourseThumbnailClass(index)} p-5`}>
+                                        {course.thumbnail && (
+                                            <img src={course.thumbnail} alt={course.title} className="absolute inset-0 h-full w-full object-cover" />
+                                        )}
                                         <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.14),rgba(255,255,255,0)_35%,rgba(0,0,0,0.35))]" />
                                         <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-black/25 text-lg font-semibold text-white shadow-lg">
                                             {getCourseInitials(course.title)}
@@ -1996,23 +2296,47 @@ export default function VideosPage() {
                                             </div>
                                         </div>
 
-                                        <div className="mt-auto grid gap-2 pt-5">
+                                        <div className="mt-auto grid grid-cols-3 gap-2 pt-5">
                                             <button
                                                 type="button"
                                                 onClick={() => setOpenCourseId(course.id)}
-                                                className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary/90"
+                                                className="col-span-2 inline-flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
                                             >
                                                 Open Course
                                                 <ChevronRight className="ml-2 h-4 w-4" />
                                             </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDeleteCourse(course.id)}
-                                                className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/15"
-                                            >
-                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                Delete
-                                            </button>
+                                            <div className="flex gap-2">
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                handleEditCourse(course)
+                                                            }}
+                                                            className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-card p-2 text-foreground transition hover:bg-card/80"
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>Edit</TooltipContent>
+                                                </Tooltip>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                handleDeleteCourse(course.id)
+                                                            }}
+                                                            className="flex-1 inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/15"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>Delete</TooltipContent>
+                                                </Tooltip>
+                                            </div>
                                         </div>
                                     </div>
                                 </article>
@@ -2039,6 +2363,177 @@ export default function VideosPage() {
                             className="min-h-0 flex-1 rounded-b-3xl bg-background"
                         />
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Unit Dialog */}
+            <Dialog open={!!editingUnit} onOpenChange={(open) => !open && setEditingUnit(null)}>
+                <DialogContent className="sm:max-w-md rounded-3xl border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]">
+                    <DialogHeader>
+                        <DialogTitle>Edit Unit</DialogTitle>
+                        <DialogDescription>Rename unit title and description.</DialogDescription>
+                    </DialogHeader>
+                    {editingUnit && (
+                        <div className="space-y-4 py-4">
+                            <label className="space-y-2 text-sm text-muted-foreground block">
+                                <span>Unit Title</span>
+                                <input
+                                    value={editingUnit.title}
+                                    onChange={(e) => setEditingUnit({ ...editingUnit, title: e.target.value })}
+                                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                />
+                            </label>
+                            <label className="space-y-2 text-sm text-muted-foreground block">
+                                <span>Unit Description</span>
+                                <textarea
+                                    value={editingUnit.description}
+                                    onChange={(e) => setEditingUnit({ ...editingUnit, description: e.target.value })}
+                                    className="min-h-[80px] w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                />
+                            </label>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button type="button" onClick={handleSaveUnit}>
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Lesson Dialog */}
+            <Dialog open={!!editingLesson} onOpenChange={(open) => !open && setEditingLesson(null)}>
+                <DialogContent className="sm:max-w-lg rounded-3xl border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]">
+                    <DialogHeader>
+                        <DialogTitle>Edit Lesson</DialogTitle>
+                        <DialogDescription>Update lesson details, video URL, and ordering.</DialogDescription>
+                    </DialogHeader>
+                    {editingLesson && (
+                        <div className="space-y-4 py-4">
+                            <label className="space-y-2 text-sm text-muted-foreground block">
+                                <span>Lesson Title</span>
+                                <input
+                                    value={editingLesson.title}
+                                    onChange={(e) => setEditingLesson({ ...editingLesson, title: e.target.value })}
+                                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                    placeholder="Enter lesson title"
+                                />
+                            </label>
+                            <label className="space-y-2 text-sm text-muted-foreground block">
+                                <span>Description (optional)</span>
+                                <textarea
+                                    value={editingLesson.description}
+                                    onChange={(e) => setEditingLesson({ ...editingLesson, description: e.target.value })}
+                                    className="min-h-[80px] w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                    placeholder="Brief lesson description"
+                                />
+                            </label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <label className="space-y-2 text-sm text-muted-foreground block">
+                                    <span>Duration</span>
+                                    <input
+                                        value={editingLesson.duration}
+                                        onChange={(e) => setEditingLesson({ ...editingLesson, duration: e.target.value })}
+                                        className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                        placeholder="30 mins"
+                                    />
+                                </label>
+                                <label className="space-y-2 text-sm text-muted-foreground block">
+                                    <span>Order (position)</span>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        value={editingLesson.order}
+                                        onChange={(e) => setEditingLesson({ ...editingLesson, order: Math.max(1, Number(e.target.value) || 1) })}
+                                        className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                    />
+                                </label>
+                            </div>
+                            <label className="space-y-2 text-sm text-muted-foreground block">
+                                <span>Video URL</span>
+                                <input
+                                    value={editingLesson.videoUrl}
+                                    onChange={(e) => setEditingLesson({ ...editingLesson, videoUrl: e.target.value })}
+                                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                    placeholder="https://youtube.com/watch?v=... or direct .mp4 URL"
+                                />
+                            </label>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setEditingLesson(null)}>Cancel</Button>
+                        <Button type="button" onClick={handleSaveLesson}>Save Changes</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Cheat Sheet Dialog */}
+            <Dialog open={!!editingCheatSheet} onOpenChange={(open) => !open && setEditingCheatSheet(null)}>
+                <DialogContent className="sm:max-w-md rounded-3xl border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]">
+                    <DialogHeader>
+                        <DialogTitle>Edit Cheat Sheet</DialogTitle>
+                        <DialogDescription>Rename, update description, or replace the PDF file.</DialogDescription>
+                    </DialogHeader>
+                    {editingCheatSheet && (
+                        <div className="space-y-4 py-4">
+                            <label className="space-y-2 text-sm text-muted-foreground block">
+                                <span>PDF Name</span>
+                                <input
+                                    value={editingCheatSheet.name}
+                                    onChange={(e) => setEditingCheatSheet({ ...editingCheatSheet, name: e.target.value })}
+                                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                    placeholder="e.g. Lesson 1 Cheat Sheet.pdf"
+                                />
+                            </label>
+                            <label className="space-y-2 text-sm text-muted-foreground block">
+                                <span>Description (optional)</span>
+                                <textarea
+                                    value={editingCheatSheet.description}
+                                    onChange={(e) => setEditingCheatSheet({ ...editingCheatSheet, description: e.target.value })}
+                                    className="min-h-[70px] w-full rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                    placeholder="Brief description of this cheat sheet"
+                                />
+                            </label>
+                            <div className="rounded-xl border border-border bg-background/60 p-3 space-y-2">
+                                <p className="text-sm text-muted-foreground">Replace PDF File (optional)</p>
+                                {editingCheatSheet.dataUrl && (
+                                    <div className="flex items-center gap-2 text-xs text-foreground">
+                                        <FileText className="h-4 w-4 text-primary" />
+                                        <span className="truncate">{editingCheatSheet.name || 'Current PDF'}</span>
+                                    </div>
+                                )}
+                                <input
+                                    id="edit-cheat-sheet-file"
+                                    type="file"
+                                    accept="application/pdf,.pdf"
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0]
+                                        e.target.value = ''
+                                        if (!file) return
+                                        const cs = await readPdfCheatSheet(file)
+                                        if (cs && editingCheatSheet) {
+                                            setEditingCheatSheet({
+                                                ...editingCheatSheet,
+                                                name: editingCheatSheet.name || cs.name,
+                                                dataUrl: cs.dataUrl,
+                                            })
+                                        }
+                                    }}
+                                    className="sr-only"
+                                />
+                                <label
+                                    htmlFor="edit-cheat-sheet-file"
+                                    className="inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-dashed border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground transition hover:bg-card"
+                                >
+                                    Replace PDF
+                                </label>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setEditingCheatSheet(null)}>Cancel</Button>
+                        <Button type="button" onClick={handleSaveCheatSheet}>Save Changes</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

@@ -1,4 +1,4 @@
-﻿// Mock Data for DTrade Capital Admin Dashboard
+// Mock Data for DTrade Capital Admin Dashboard
 
 export interface User {
   id: string
@@ -61,7 +61,7 @@ export interface DTerminalData {
 export interface QuizQuestion {
   id: string
   question: string
-  options: [string, string, string, string]
+  options: string[]
   correctAnswerIndex: number
   explanation?: string
 }
@@ -75,6 +75,7 @@ export interface CheatSheetFile {
   name: string
   dataUrl: string
   type: 'application/pdf'
+  description?: string
 }
 
 export interface Video {
@@ -94,6 +95,7 @@ export interface Unit {
   id: string
   title: string
   videos: Video[]
+  description?: string
 }
 
 export interface Course {
@@ -103,6 +105,7 @@ export interface Course {
   durationWeeks: number
   unitCount: number
   units: Unit[]
+  thumbnail?: string
 }
 
 export interface Transaction {
